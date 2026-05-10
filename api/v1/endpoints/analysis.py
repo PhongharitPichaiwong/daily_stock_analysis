@@ -123,13 +123,16 @@ def _run_market_review_background(
     runtime_config = config or get_config_dep()
     notifier, analyzer, search_service = _build_market_review_runtime(runtime_config)
     try:
-        run_market_review(
+        report = run_market_review(
             notifier=notifier,
             analyzer=analyzer,
             search_service=search_service,
             send_notification=send_notification,
             override_region=override_region,
         )
+        if not report:
+            raise RuntimeError("大盘复盘未返回可持久化报告")
+        return {"result": report}
     finally:
         _release_market_review_lock(lock_token)
 

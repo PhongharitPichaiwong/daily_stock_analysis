@@ -694,6 +694,8 @@ class AnalysisTaskQueue:
 
         try:
             result = run_task()
+            if result is None:
+                raise RuntimeError("任务返回空结果，未生成可持久化内容")
 
             with self._data_lock:
                 task = self._tasks.get(task_id)

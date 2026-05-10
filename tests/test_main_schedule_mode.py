@@ -402,6 +402,48 @@ class MainScheduleModeTestCase(unittest.TestCase):
         pipeline.run.assert_called_once()
         run_market_review.assert_not_called()
 
+    def test_market_review_mode_uses_shared_runtime_assembly(self) -> None:
+        args = self._make_args(market_review=True)
+        config = self._make_config(
+            trading_day_check_enabled=True,
+            market_review_region="both",
+            market_review_enabled=False,
+            database_path=str(Path(self.temp_dir.name) / "stock_analysis.db"),
+        )
+        runtime_notifier = MagicMock()
+        runtime_analyzer = MagicMock()
+        runtime_search_service = MagicMock()
+
+        with patch("main.parse_arguments", return_value=args), \
+             patch("main.get_config", return_value=config), \
+             patch("main.setup_logging"), \
+             patch("main._run_market_review_with_shared_lock") as run_with_lock, \
+             patch(
+                 "src.core.market_review_runtime.build_market_review_runtime",
+                 return_value=(
+                    runtime_notifier,
+                    runtime_analyzer,
+                    runtime_search_service,
+                 ),
+             ) as runtime_builder, \
+             patch("src.core.market_review.run_market_review") as run_market_review, \
+             patch("src.core.trading_calendar.get_open_markets_today", return_value={"cn", "us"}), \
+             patch("src.core.trading_calendar.compute_effective_region", return_value="cn,us"):
+            exit_code = main.main()
+
+        self.assertEqual(exit_code, 0)
+        runtime_builder.assert_called_once_with(config)
+        run_with_lock.assert_called_once()
+        call_args = run_with_lock.call_args
+        self.assertEqual(call_args.args[0], config)
+        self.assertIs(call_args.args[1], run_market_review)
+        self.assertIs(call_args.kwargs["notifier"], runtime_notifier)
+        self.assertIs(call_args.kwargs["analyzer"], runtime_analyzer)
+        self.assertIs(call_args.kwargs["search_service"], runtime_search_service)
+        self.assertTrue(call_args.kwargs["send_notification"])
+        self.assertNotIn("merge_notification", call_args.kwargs)
+        self.assertEqual(call_args.kwargs["override_region"], "cn,us")
+
     def test_bootstrap_logging_persists_when_config_load_fails(self) -> None:
         """Config load failure must be logged to stderr and return exit code 1.
 

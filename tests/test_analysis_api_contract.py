@@ -227,6 +227,54 @@ class AnalysisApiContractTestCase(unittest.TestCase):
         self.assertIs(analyzer, analyzer_cls.return_value)
         self.assertIsNone(search_service)
 
+    def test_run_market_review_background_returns_non_empty_result_payload(self) -> None:
+        if analysis_endpoint_module is None:
+            self.skipTest("analysis endpoint helpers unavailable in this environment")
+
+        runtime_notifier = MagicMock()
+        runtime_search = MagicMock()
+        runtime_analyzer = MagicMock()
+        with patch.object(
+            analysis_endpoint_module,
+            "_build_market_review_runtime",
+            return_value=(runtime_notifier, runtime_analyzer, runtime_search),
+        ), patch("src.core.market_review.run_market_review", return_value="report") as run_market_review:
+            result = analysis_endpoint_module._run_market_review_background(
+                send_notification=False,
+                override_region="cn",
+                lock_token=None,
+                config=SimpleNamespace(),
+            )
+
+        self.assertEqual(result, {"result": "report"})
+        run_market_review.assert_called_once_with(
+            notifier=runtime_notifier,
+            analyzer=runtime_analyzer,
+            search_service=runtime_search,
+            send_notification=False,
+            override_region="cn",
+        )
+
+    def test_run_market_review_background_raises_when_report_is_empty(self) -> None:
+        if analysis_endpoint_module is None:
+            self.skipTest("analysis endpoint helpers unavailable in this environment")
+
+        runtime_notifier = MagicMock()
+        runtime_search = MagicMock()
+        runtime_analyzer = MagicMock()
+        with patch.object(
+            analysis_endpoint_module,
+            "_build_market_review_runtime",
+            return_value=(runtime_notifier, runtime_analyzer, runtime_search),
+        ), patch("src.core.market_review.run_market_review", return_value=None):
+            with self.assertRaisesRegex(RuntimeError, "大盘复盘未返回可持久化报告"):
+                analysis_endpoint_module._run_market_review_background(
+                    send_notification=False,
+                    override_region="cn",
+                    lock_token=None,
+                    config=SimpleNamespace(),
+                )
+
     def test_get_analysis_status_completed_db_snapshot_preserves_zero_change_pct(self) -> None:
         if get_analysis_status is None:
             self.skipTest("analysis endpoint helpers unavailable in this environment")
