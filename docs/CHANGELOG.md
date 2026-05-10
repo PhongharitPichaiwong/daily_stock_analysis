@@ -36,6 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - [文档] 本次决策稳定性与提示词约束改动仅保持运行时模型/provider/Base URL/发布语义不变，不改动配置持久化与环境语义；但涉及 `src/analyzer.py`、`src/core/pipeline.py`、`src/report_language.py` 与 `src/agent` 相关决策后处理/提示词路径的运行时行为，请回归验证决策落盘与报告口径映射。
 - [文档] 新增中文文档中心并同步英文索引，补齐快速开始、配置、使用专题、部署打包、参考开发等项目文档入口。
 - [文档] 调整 README 联系与合作区域。
+- [测试] 完成本地 Web 前端门禁验证：`cd apps/dsa-web && npm ci --ignore-scripts && npm run lint && npm run build`。由于当前沙盒环境 `esbuild` postinstall 存在执行权限限制，已使用 `--ignore-scripts` 仅安装静态依赖后完成 `lint/build` 校验。
+- [文档] 新增可审计兼容证据交叉链：`Config._load_from_env()` 优先级为 `LITELLM_CONFIG` > `LLM_CHANNELS` > legacy，回退路径与回滚策略与 `tests/test_llm_channel_config.py`、`tests/test_market_review_runtime.py`、`tests/test_analysis_api_contract.py` 对齐。
 
 ## [3.15.0] - 2026-05-05
 
