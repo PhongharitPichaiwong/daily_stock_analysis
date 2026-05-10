@@ -435,11 +435,6 @@ class BacktestEngine:
             # For non-ASCII terms (Chinese), use substring matching to keep
             # natural language phrasings like "建议买入" effective.
             if re.search(r"[\u4e00-\u9fff]", keyword):
-                if keyword == "观望" and not re.search(
-                    rf"(?<![\u4e00-\u9fff]){re.escape(keyword)}(?![\u4e00-\u9fff])",
-                    text,
-                ):
-                    continue
                 start = 0
                 while True:
                     match_idx = text.find(keyword, start)

@@ -337,6 +337,24 @@ class BacktestEngineTestCase(unittest.TestCase):
         pos = BacktestEngine.infer_position_recommendation("wait for a dip then buy")
         self.assertEqual(pos, "cash")
 
+    def test_wait_phrase_before_bullish_phrases_stays_wait(self):
+        self.assertEqual(
+            BacktestEngine.infer_position_recommendation("先观望再买入"),
+            "cash",
+        )
+        self.assertEqual(
+            BacktestEngine.infer_direction_expected("先观望再买入"),
+            "flat",
+        )
+        self.assertEqual(
+            BacktestEngine.infer_position_recommendation("观望后买入"),
+            "cash",
+        )
+        self.assertEqual(
+            BacktestEngine.infer_direction_expected("观望后买入"),
+            "flat",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
