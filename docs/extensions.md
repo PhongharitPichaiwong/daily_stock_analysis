@@ -57,6 +57,14 @@ MVP 已实现 Action allowlist、confirmation guard、timeout guard 和 call dep
 
 本轮新增能力仅覆盖 Extension Runtime MVP 与 `TaskQueue` 桥接，不修改模型名、provider、`Base URL`、LLM 运行时入口、`.env` 命名/解析、默认模型策略或配置迁移逻辑；相关兼容风险为无变更场景，若后续涉及配置迁移需补充兼容与回退路径。
 
+## 兼容性与回退核验
+
+- 外部模型/API 兼容性：本轮未新增供应商接入与模型调用链，仅复用现有配置与运行时（`src/config.py`、`src/services/system_config_service.py`、`docs/LLM_CONFIG_GUIDE*`）。外部标准来源见：
+  - [LiteLLM OpenAI-compatible providers](https://docs.litellm.ai/docs/providers/openai_compatible)
+  - [OpenAI Chat Completions API](https://platform.openai.com/docs/api-reference/chat)
+- 运行时依赖边界：本变更未引入新配置键，不涉及 Base URL、provider 或模型清单迁移；回退语义为版本回滚到上一个发布，不执行静默配置清理。
+- 回归证据：`tests/test_extensions_runtime.py` 覆盖 ActionContext/Guard/Timeout/异步提交路径；`tests/test_task_queue_config_sync.py` 覆盖任务队列配置同步与单例行为，避免影响既有运行时并发与执行预算。
+
 ## 内置 Action MVP
 
 `dsa.analyze_stock`、`notification.send`、`stock_pool.import` 只做内置声明和 adapter pending/dry-run 返回；通知和股票池导入在非 dry-run 下需要确认。这些 Action 不会自动暴露给模型，Agent 必须通过 allowlist 和 Skill Router 按需桥接到 Tool Registry。
