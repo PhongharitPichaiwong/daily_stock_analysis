@@ -22,7 +22,7 @@ For English contributors: please fill in English. All fields marked (EN) accept 
 请列出本 PR 修改的模块和文件范围。  
 *(EN) List the modules and files changed in this PR.*
 
-## Issue Link（如为 umbrella issue / 拆分问题请使用 Refs）
+## Issue Link（拆分提交 / umbrella issue 请使用 Refs）
 
 必须仅填写以下之一 / Fill in exactly one of:
 - `Fixes #<issue_number>` / 非 umbrella issue 或修复问题直达（本 PR 全量修复该 issue）
@@ -31,8 +31,10 @@ For English contributors: please fill in English. All fields marked (EN) accept 
 
 示例 / Example:
 
-- `Refs #1309` / PR 为 #1309 拆分任务提交
-- `Fixes #1309` / PR 本身作为 #1309 的最终交付（不拆分场景）
+- #1309 为 umbrella issue 分解场景：`Refs #1309`
+- 仅在 PR 直接闭环 #1309 全部验收时才使用：`Fixes #1309`
+
+> 建议：若你的 PR 是第 N 轮分解任务（如本仓库的 #1309），请务必避免 `Closes`/`Fixes`，固定使用 `Refs`，避免自动关闭总 issue。
 
 ## Verification Commands And Results
 
@@ -52,10 +54,10 @@ python -m pytest -m "not network"
 请说明兼容性影响、潜在风险（如无请写 `None`）。  
 *(EN) Describe compatibility impact and potential risks (write `None` if not applicable).*
 
-- 本轮为 #1309 拆分任务时的兼容性边界结论（先填本段可减少审查歧义）：
-  - 本 PR 未新增/修改 provider、model、Base URL、SDK 接入窗口、模型默认名、`litellm_model` / `llm_model_list` 语义，也未新增 `.env` 配置迁移或运行时保存/清理/回填逻辑。
-  - 外部模型/API 兼容检测若有命中，主要原因是仓库中既有文档/说明存在 model/provider/Base URL 术语，不代表本轮新增了外部模型/API 兼容语义变更；本轮兼容风险仅限已有运行时路径（未扩展 provider 或 API 入口）。
-  - 本 PR 回退路径：版本回滚到上一个版本（`revert this PR`）。
+- 如本 PR 为拆分任务（如 #1309），先填以下结论可减少审查歧义：
+  - 本 PR 未新增/修改 `provider`、`model`、`Base URL`、`litellm_model`、`llm_model_list`、LiteLLM/LLM 运行时默认值，也未新增 `.env` 配置迁移或运行时保存/清理/回填逻辑。
+  - 若外部模型/API 兼容检测有命中，多为仓库既有文档/说明里的关键词导致的静态告警，不代表本轮改动引入了新的模型/API 兼容语义或迁移；实际影响仅为现有运行时路径的常规回归覆盖范围。
+  - 本 PR 回退路径：版本回滚到上一个版本（`revert this PR`），无须执行配置补偿步骤。
 
 - 若本 PR 修改第三方模型 / API 的兼容语义、请求参数、路由前缀或 provider fallback，请提供**官方来源链接或公告**，并说明这是长期约束、当前运行时约束还是临时兼容处理。  
   *(EN) If this PR changes third-party model/API compatibility, request parameters, routing prefixes, or provider fallback behavior, include an **official source link or announcement** and clarify whether the rule is permanent, runtime-specific, or a temporary compatibility workaround.)*
