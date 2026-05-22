@@ -8,7 +8,9 @@ import unittest
 import pandas as pd
 
 from data_provider.base import DataFetcherManager
+from data_provider.base import normalize_stock_code
 from data_provider.baostock_fetcher import BaostockFetcher
+from data_provider.tushare_fetcher import TushareFetcher
 from data_provider.pytdx_fetcher import PytdxFetcher
 
 
@@ -79,6 +81,24 @@ class TestPytdxAShareCodeConversion(unittest.TestCase):
         self.assertEqual(fetcher._get_market_code("sh.600519"), (1, "600519"))
         self.assertEqual(fetcher._get_market_code("SZ.000001"), (0, "000001"))
         self.assertEqual(fetcher._get_market_code("ss.600519"), (1, "600519"))
+
+
+class TestTushareAShareCodeConversion(unittest.TestCase):
+    def test_convert_prefixed_dot_code_to_tushare_format(self) -> None:
+        fetcher = TushareFetcher()
+
+        self.assertEqual(fetcher._convert_stock_code("SH.600519"), "600519.SH")
+        self.assertEqual(fetcher._convert_stock_code("sh.600519"), "600519.SH")
+        self.assertEqual(fetcher._convert_stock_code("SZ.000001"), "000001.SZ")
+        self.assertEqual(fetcher._convert_stock_code("sz.000001"), "000001.SZ")
+
+
+class TestNormalizeStockCode(unittest.TestCase):
+    def test_normalize_prefixed_dot_code(self) -> None:
+        self.assertEqual(normalize_stock_code("SH.600519"), "600519")
+        self.assertEqual(normalize_stock_code("sh.600519"), "600519")
+        self.assertEqual(normalize_stock_code("SZ.000001"), "000001")
+        self.assertEqual(normalize_stock_code("sz.000001"), "000001")
 
 
 if __name__ == "__main__":
