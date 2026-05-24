@@ -335,6 +335,10 @@ def build_agent_executor(config=None, skills: Optional[List[str]] = None):
         )
 
     from src.agent.executor import AgentExecutor
+    # Intentionally do not mutate config routing fields here. We only coerce
+    # execution params (max_steps/timeout_seconds) from config values; provider,
+    # model, base URL and channel routes stay unchanged and are consumed by
+    # downstream adapter logic as-is.
     return AgentExecutor(
         tool_registry=registry,
         llm_adapter=llm_adapter,
