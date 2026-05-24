@@ -21,19 +21,15 @@
 - 不改变现有数据源优先级、分析策略、通知策略。
 - 不变更 LLM provider 列表、Base URL、`llm_call` 运行时参数、`REPORT_*` 配置语义与迁移路径；本轮改动限定在 A 股代码归属解析与诊断字段边界。
 
-### PR 合并前门禁
+### 验收边界（本轮）
 
-- 本轮本质为 `fix`（docs + runtime fix），PR 描述必须与实际 runtime diff 完全一致，不得再标注为 docs-only。
-- PR 标题建议为 `fix: ...`（而非 `docs: ...`），并在描述中固定包含 `Fixes #1391`。
-- PR 描述需固定包含：
-  - `Fixes #1391` 或 `Refs #1391`（优先 `Fixes`）。
-  - runtime 变更文件列表（本轮限定 `data_provider/baostock_fetcher.py`、`data_provider/pytdx_fetcher.py`、`data_provider/tushare_fetcher.py`），并在 PR 描述中逐文件列出变更点与理由。
-  - 回归执行与结论：`python -m pytest tests/test_a_share_fetcher_code_conversion.py`、`./scripts/ci_gate.sh`（需给出命令输出摘要或 CI 链接）；若未执行需写清原因与阻塞项。
-  - 与目标分支的冲突状态说明，以及最小回滚方式（例如：还原上述三文件到合并前提交）。
-- 必要的 correctness blocker（必须在 runtime 变更合入前解决）：
-  - `data_provider/baostock_fetcher.py` 的 `_convert_stock_code` 需正确处理所有常见 A 股代码输入格式，包括但不限于：裸码（`000001`）、后缀码（`000001.SZ`、`000001.SH`）、以及前缀形式（`SH000001`、`SH.000001`、`SZ000001`、`SZ.000001`）。当前实现存在前缀语义丢失风险；该问题须在本轮 runtime patch 中修复，并由 `tests/test_a_share_fetcher_code_conversion.py` 增补 SH/SZ 前缀用例回归。
-- 如有 `merge conflict`，在未清理前不得合入；清理后需以最终 head 重新确认 diff、重跑回归并同步结果与日志。
-- 回归最少需给出：`python -m pytest tests/test_a_share_fetcher_code_conversion.py`、`./scripts/ci_gate.sh` 的执行输出或 CI 链接，包含通过/失败结论；若失败，需记录失败原因、影响范围与下一步处置计划（如回滚或补丁）。
+- 本轮为 `fix`（docs + runtime fix），变更仅收敛 A 股代码归属语义，不改 provider 列表、Base URL、`llm_call` 运行时语义与 `REPORT_*` 配置迁移路径。
+- `data_provider/baostock_fetcher.py`、`data_provider/pytdx_fetcher.py`、`data_provider/tushare_fetcher.py` 本轮只处理：
+  - 裸码与后缀码：`000001`、`000001.SH`、`000001.SZ`
+  - 前缀码：`SH000001`、`SH.000001`、`SZ000001`、`SZ.000001`
+- `SH000001`/`SH.000001`/`SZ000001`/`SZ.000001` 场景为 correctness blocker，需由 `tests/test_a_share_fetcher_code_conversion.py` 覆盖回归。
+- 回归最小口径为 `python -m pytest tests/test_a_share_fetcher_code_conversion.py` 与 `./scripts/ci_gate.sh`，并在 PR 描述同步结果与阻塞。
+- 回滚优先级为恢复本轮三文件变更到合并前提交；其余范围不应一并回退。
 
 ## 术语与契约（P0 草案）
 
@@ -89,15 +85,6 @@
 
 - 新字段应优先追加，不破坏现有 API / Web / Desktop 读取路径。
 - 旧历史记录缺少新字段时应可安全回退。
-
-### 验证与沟通边界（本轮）
-
-- PR 触及后端数据源代码，不再标注为“docs-only”；本轮为 docs + runtime fix。
-- 本轮明确排除 LLM provider / Base URL / `llm_call` 迁移路径 / provider 列表语义改动；这是范围排除说明，不代表发生外部模型/API 兼容性变更。
-- PR 合并前需以实际状态说明回归测试执行结果：`python -m pytest tests/test_a_share_fetcher_code_conversion.py` 与 `./scripts/ci_gate.sh`（至少需给出两者的成功/未执行原因及截图/日志）。
-- 回滚方式为回退对应 `data_provider/baostock_fetcher.py`、`data_provider/pytdx_fetcher.py`、`data_provider/tushare_fetcher.py` 的本轮变更；如需最小风险处置，可直接还原该轮提交。
-- 本轮未改动 LLM provider 列表、Base URL、`llm_call` 迁移路径和运行时配置语义，避免扩展到模型路由兼容面。
-- 本轮需先确认无未解决 merge conflict；若存在冲突，需先清理后再以最终 head 重新确认 diff 与验证记录。
 
 ## Phase 0 交付清单
 
