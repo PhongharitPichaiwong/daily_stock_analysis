@@ -214,6 +214,41 @@ class TestLongbridgeAuthSelection(unittest.TestCase):
         mock_config.from_apikey.assert_not_called()
 
     @patch("src.config.get_config")
+    def test_oauth_overwrites_invalid_cache_from_base64_secret(self, mock_get_config):
+        mock_get_config.return_value = self._config(oauth_client_id="client-1")
+        modules = self._install_mock_longbridge()
+        mock_lb_module, mock_lb_openapi, mock_config, _, mock_oauth_builder = modules
+        mock_oauth_builder.return_value.build.return_value = "oauth-token"
+        mock_config.from_oauth.return_value = "oauth-config"
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            invalid_cache = Path(tmpdir) / "client-1"
+            invalid_cache.write_text("invalid-json", encoding="utf-8")
+            encoded_cache = base64.b64encode(b'{"refresh_token":"refreshed"}').decode("ascii")
+            with patch.dict("sys.modules", {"longbridge": mock_lb_module, "longbridge.openapi": mock_lb_openapi}), patch.dict(
+                os.environ,
+                {
+                    "LONGBRIDGE_OAUTH_CLIENT_ID": "client-1",
+                    "LONGBRIDGE_OAUTH_TOKEN_CACHE_B64": encoded_cache,
+                    "LONGBRIDGE_APP_KEY": "",
+                    "LONGBRIDGE_APP_SECRET": "",
+                    "LONGBRIDGE_ACCESS_TOKEN": "",
+                },
+            ), patch("data_provider.longbridge_fetcher._longbridge_config_kwargs", return_value={}), patch(
+                "data_provider.longbridge_fetcher._oauth_token_cache_path",
+                return_value=invalid_cache,
+            ):
+                fetcher = LongbridgeFetcher()
+                ctx = fetcher._get_ctx()
+                self.assertEqual(invalid_cache.read_bytes(), b'{"refresh_token":"refreshed"}')
+
+        self.assertEqual(ctx, "quote-context")
+        mock_oauth_builder.assert_called_once_with("client-1")
+        mock_config.from_oauth.assert_called_once_with("oauth-token")
+        mock_config.from_apikey_env.assert_not_called()
+        mock_config.from_apikey.assert_not_called()
+
+    @patch("src.config.get_config")
     def test_oauth_callback_reauth_request_fails_closed_in_headless(self, mock_get_config):
         mock_get_config.return_value = self._config(oauth_client_id="client-1")
         modules = self._install_mock_longbridge()

@@ -233,13 +233,16 @@ def _restore_oauth_token_cache_from_env(client_id: str) -> bool:
     The Longbridge SDK expects its OAuth token cache at
     ``~/.longbridge/openapi/tokens/<client_id>``.  In headless environments the
     file can be provided as base64 through ``LONGBRIDGE_OAUTH_TOKEN_CACHE_B64``.
+    If an existing cache exists, this helper only overwrites it when invalid
+    (empty/truncated/format-broken), keeping valid cache unchanged.
     """
     raw = os.getenv("LONGBRIDGE_OAUTH_TOKEN_CACHE_B64")
     if not raw:
         return False
 
     token_cache = _oauth_token_cache_path(client_id)
-    if token_cache.exists():
+    if token_cache.exists() and _is_valid_oauth_cache_file(token_cache):
+        logger.debug("[Longbridge] OAuth token 缓存存在且有效，跳过恢复: %s", token_cache)
         return False
 
     try:
@@ -518,8 +521,7 @@ class LongbridgeFetcher(BaseFetcher):
 
                 if oauth_client_id:
                     token_cache = _oauth_token_cache_path(oauth_client_id)
-                    if not token_cache.exists():
-                        _restore_oauth_token_cache_from_env(oauth_client_id)
+                    _restore_oauth_token_cache_from_env(oauth_client_id)
 
                     if _is_valid_oauth_cache_file(token_cache):
                         try:
