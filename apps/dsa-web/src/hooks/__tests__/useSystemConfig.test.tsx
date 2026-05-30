@@ -195,4 +195,37 @@ describe('useSystemConfig', () => {
     expect(result.current.hasDirty).toBe(false);
     expect(result.current.dirtyCount).toBe(0);
   });
+
+  it('only resets local draft edits without mutating server values for LLM fields', async () => {
+    const current = sampleLlmConfig;
+    getConfig.mockResolvedValueOnce(current);
+
+    const { result } = renderHook(() => useSystemConfig());
+
+    await act(async () => {
+      await result.current.load();
+    });
+
+    act(() => {
+      result.current.setDraftValue('LITELLM_MODEL', 'qwen/qwen2.5');
+      result.current.setDraftValue('OPENAI_BASE_URL', 'https://api.example.org/v1');
+    });
+
+    expect(result.current.hasDirty).toBe(true);
+    expect(result.current.dirtyCount).toBe(2);
+
+    act(() => {
+      result.current.resetDraft();
+    });
+
+    expect(result.current.hasDirty).toBe(false);
+    expect(result.current.dirtyCount).toBe(0);
+
+    await act(async () => {
+      await result.current.save();
+    });
+
+    expect(validate).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalled();
+  });
 });
