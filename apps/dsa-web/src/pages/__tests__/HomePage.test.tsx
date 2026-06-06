@@ -5,8 +5,10 @@ import { analysisApi, DuplicateTaskError } from '../../api/analysis';
 import { agentApi } from '../../api/agent';
 import { historyApi } from '../../api/history';
 import { systemConfigApi } from '../../api/systemConfig';
+import { UiLanguageProvider } from '../../contexts/UiLanguageContext';
 import { useStockPoolStore } from '../../stores';
 import { getReportText, normalizeReportLanguage } from '../../utils/reportLanguage';
+import { UI_LANGUAGE_STORAGE_KEY } from '../../utils/uiLanguage';
 import HomePage from '../HomePage';
 
 const navigateMock = vi.fn();
@@ -120,6 +122,7 @@ describe('HomePage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     navigateMock.mockReset();
+    window.localStorage.clear();
     useStockPoolStore.getState().resetDashboardState();
     vi.mocked(analysisApi.getTasks).mockResolvedValue({
       total: 0,
@@ -382,11 +385,63 @@ describe('HomePage', () => {
     fireEvent.click(await screen.findByRole('button', { name: '大盘复盘' }));
 
     await waitFor(() => {
-      expect(analysisApi.triggerMarketReview).toHaveBeenCalledWith({ sendNotification: true });
+      expect(analysisApi.triggerMarketReview).toHaveBeenCalledWith({ sendNotification: true, reportLanguage: 'zh' });
     });
     expect(await screen.findByText('大盘复盘已完成')).toBeInTheDocument();
     expect(await screen.findByText('市场复盘报告示例文本')).toBeInTheDocument();
     expect(analysisApi.getStatus).toHaveBeenCalledWith('task-1');
+  });
+
+  it('submits new analyses and market reviews using the current UI language', async () => {
+    window.localStorage.setItem(UI_LANGUAGE_STORAGE_KEY, 'en');
+    vi.mocked(historyApi.getList).mockResolvedValue({
+      total: 0,
+      page: 1,
+      limit: 20,
+      items: [],
+    });
+    vi.mocked(analysisApi.analyzeAsync).mockResolvedValue({
+      taskId: 'task-1',
+      status: 'pending',
+    });
+    vi.mocked(analysisApi.triggerMarketReview).mockResolvedValue({
+      status: 'accepted',
+      sendNotification: true,
+      message: 'Market review task submitted',
+      taskId: 'market-task-1',
+    });
+    vi.mocked(analysisApi.getStatus).mockResolvedValue({
+      taskId: 'market-task-1',
+      status: 'completed',
+      marketReviewReport: 'Market review report',
+      marketReviewPayload: {
+        kind: 'market_review',
+        language: 'en',
+        title: 'Market review',
+        sections: [],
+      },
+    });
+
+    render(
+      <UiLanguageProvider>
+        <MemoryRouter>
+          <HomePage />
+        </MemoryRouter>
+      </UiLanguageProvider>,
+    );
+
+    fireEvent.change(await screen.findByPlaceholderText('Enter a stock code or name, e.g. 600519, Kweichow Moutai, AAPL'), {
+      target: { value: 'AAPL' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Analyze' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Market review' }));
+
+    await waitFor(() => {
+      expect(analysisApi.analyzeAsync).toHaveBeenCalledWith(expect.objectContaining({
+        reportLanguage: 'en',
+      }));
+      expect(analysisApi.triggerMarketReview).toHaveBeenCalledWith({ sendNotification: true, reportLanguage: 'en' });
+    });
   });
 
   it('uses the payload language for live market review controls', async () => {

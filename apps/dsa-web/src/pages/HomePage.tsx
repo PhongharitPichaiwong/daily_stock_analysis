@@ -19,7 +19,7 @@ import { useDashboardLifecycle, useHomeDashboardState } from '../hooks';
 import { useWatchlist } from '../hooks/useWatchlist';
 import { useUiLanguage } from '../contexts/UiLanguageContext';
 import type { SetupStatusResponse } from '../types/systemConfig';
-import { getReportText, normalizeReportLanguage } from '../utils/reportLanguage';
+import { normalizeReportLanguage } from '../utils/reportLanguage';
 import type { MarketReviewPayload, StockBarItem } from '../types/analysis';
 
 type MarketReviewNotice = {
@@ -184,7 +184,6 @@ const HomePage: React.FC = () => {
 
   const reportLanguage = normalizeReportLanguage(selectedReport?.meta.reportLanguage);
   const liveMarketReviewLanguage = normalizeReportLanguage(marketReviewPayload?.language);
-  const reportText = getReportText(reportLanguage);
   const isMarketReviewHistoryReport = selectedReport?.meta.reportType === 'market_review';
   const isHistoryTrendUnavailable = !selectedReport || !selectedReport.meta.stockCode;
 
@@ -369,9 +368,10 @@ const HomePage: React.FC = () => {
         originalQuery: query,
         selectionSource: selectionSource ?? 'manual',
         skills: selectedAnalysisSkills,
+        reportLanguage: uiLanguage,
       });
     },
-    [query, selectedAnalysisSkills, submitAnalysis],
+    [query, selectedAnalysisSkills, submitAnalysis, uiLanguage],
   );
 
   const handleAskFollowUp = useCallback(() => {
@@ -397,8 +397,9 @@ const HomePage: React.FC = () => {
       selectionSource: 'manual',
       forceRefresh: true,
       skills: selectedAnalysisSkills,
+      reportLanguage: uiLanguage,
     });
-  }, [selectedAnalysisSkills, selectedReport, submitAnalysis]);
+  }, [selectedAnalysisSkills, selectedReport, submitAnalysis, uiLanguage]);
 
   const pollMarketReviewStatus = useCallback(
     async (taskId: string) => {
@@ -526,7 +527,7 @@ const HomePage: React.FC = () => {
     setMarketReviewPayload(null);
     scrollMarketReviewFeedbackIntoView();
     try {
-      const result = await analysisApi.triggerMarketReview({ sendNotification: notify });
+      const result = await analysisApi.triggerMarketReview({ sendNotification: notify, reportLanguage: uiLanguage });
       setMarketReviewNotice({
         variant: 'success',
         title: t('home.marketReviewSubmitted'),
@@ -544,7 +545,7 @@ const HomePage: React.FC = () => {
     } finally {
       setIsSubmittingMarketReview(false);
     }
-  }, [notify, pollMarketReviewStatus, scrollMarketReviewFeedbackIntoView, t]);
+  }, [notify, pollMarketReviewStatus, scrollMarketReviewFeedbackIntoView, t, uiLanguage]);
 
   const mergedStockBarItems = useMemo<StockBarItem[]>(() => {
     const latestMarketReview = marketReviewHistoryItems[0];
@@ -903,7 +904,7 @@ const HomePage: React.FC = () => {
                     <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
-                    {reportText.fullReport}
+                    {t('home.fullReport')}
                   </Button>
                 </div>
                 {isHistoryTrendOpen ? (

@@ -78,6 +78,10 @@ class AnalyzeRequest(BaseModel):
         True,
         description="是否发送推送通知（Telegram/企业微信等）"
     )
+    report_language: Optional[Literal["zh", "en"]] = Field(
+        None,
+        description="本次分析报告输出语言；未传时使用全局 REPORT_LANGUAGE",
+    )
     skills: Optional[List[str]] = Field(
         None,
         validation_alias=AliasChoices("skills", "strategies"),
@@ -96,6 +100,7 @@ class AnalyzeRequest(BaseModel):
             "original_query": "茅台",
             "selection_source": "autocomplete",
             "notify": True,
+            "report_language": "zh",
             "skills": ["bull_trend"]
         }
     })
@@ -107,6 +112,10 @@ class MarketReviewRequest(BaseModel):
     send_notification: bool = Field(
         True,
         description="是否在大盘复盘完成后发送推送通知",
+    )
+    report_language: Optional[Literal["zh", "en"]] = Field(
+        None,
+        description="本次大盘复盘报告输出语言；未传时使用全局 REPORT_LANGUAGE",
     )
 
 
