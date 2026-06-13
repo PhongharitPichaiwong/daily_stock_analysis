@@ -139,7 +139,7 @@ def _normalize_alphasift_hotspot_cache_payload(raw: Any) -> Optional[Dict[str, A
         "cache_used": False,
         "cached_at": cached_at,
         "schema_version": raw.get("schema_version") or metadata.get("schema_version"),
-        "source_errors": list(raw.get("source_errors") or metadata.get("source_errors") or []),
+        "source_errors": _list_text_values(raw.get("source_errors") or metadata.get("source_errors")),
         "stale": bool(raw.get("stale") or metadata.get("stale") or False),
         "stale_age_hours": raw.get("stale_age_hours") or metadata.get("stale_age_hours"),
         "hotspots": hotspots,
@@ -167,7 +167,7 @@ def _write_alphasift_hotspot_cache(payload: Dict[str, Any]) -> None:
                         "provider": cache_payload.get("provider"),
                         "provider_used": cache_payload.get("provider_used"),
                         "row_count": len(cache_payload.get("hotspots") or []),
-                        "source_errors": cache_payload.get("source_errors") or [],
+                        "source_errors": _list_text_values(cache_payload.get("source_errors")),
                     },
                     "hotspots": cache_payload.get("hotspots") or [],
                     "payload": cache_payload,
@@ -434,12 +434,12 @@ def _normalize_alphasift_hotspot_detail(detail: Any, *, provider: str, requested
     timeline: List[Any] = timeline_value if isinstance(timeline_value, list) else []
     route_value = raw.get("route")
     route: List[Any] = route_value if isinstance(route_value, list) else _hotspot_timeline_to_route(timeline)
-    source_errors = list(raw.get("source_errors") or summary.get("source_errors") or [])
+    source_errors = _list_text_values(raw.get("source_errors") or summary.get("source_errors"))
     topic = _env_text(summary.get("topic") or raw.get("topic") or requested_topic)
     canonical_topic = _env_text(summary.get("canonical_topic") or raw.get("canonical_topic"))
     name = _env_text(summary.get("name") or raw.get("name") or canonical_topic or topic)
     quality_status = _env_text(summary.get("quality_status") or raw.get("quality_status"))
-    missing_fields = list(summary.get("missing_fields") or raw.get("missing_fields") or [])
+    missing_fields = _list_text_values(summary.get("missing_fields") or raw.get("missing_fields"))
     summary_text_value = raw.get("summary")
     summary_text = (
         summary_text_value
@@ -452,7 +452,7 @@ def _normalize_alphasift_hotspot_detail(detail: Any, *, provider: str, requested
         "topic": topic,
         "name": name,
         "canonical_topic": canonical_topic,
-        "aliases": list(summary.get("aliases") or raw.get("aliases") or []),
+        "aliases": _list_text_values(summary.get("aliases") or raw.get("aliases")),
         "summary": summary_text,
         "summary_detail": summary,
         "route": route,
@@ -465,8 +465,26 @@ def _normalize_alphasift_hotspot_detail(detail: Any, *, provider: str, requested
         "fallback_used": bool(summary.get("fallback_used") or raw.get("fallback_used") or False),
         "stale": bool(summary.get("stale") or raw.get("stale") or False),
         "stale_age_hours": summary.get("stale_age_hours") or raw.get("stale_age_hours"),
-        "resolver_candidates": list(summary.get("resolver_candidates") or raw.get("resolver_candidates") or []),
+        "resolver_candidates": _list_dict_values(summary.get("resolver_candidates") or raw.get("resolver_candidates")),
     }
+
+
+def _list_text_values(value: Any) -> List[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        text = _env_text(value)
+        return [text] if text else []
+    if not isinstance(value, list):
+        text = _env_text(value)
+        return [text] if text else []
+    return [text for item in value if (text := _env_text(item))]
+
+
+def _list_dict_values(value: Any) -> List[Dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
 
 
 def _hotspot_timeline_to_route(timeline: List[Any]) -> List[Dict[str, Any]]:

@@ -480,6 +480,7 @@ class AlphaSiftOpportunitiesApiTestCase(unittest.TestCase):
                 json.dumps({
                     "schema_version": 2,
                     "generated_at": "2026-06-13T02:55:00Z",
+                    "source_errors": "provider timeout",
                     "metadata": {"schema_version": 2, "provider_used": "last_good_cache"},
                     "hotspots": [
                         {
@@ -504,6 +505,7 @@ class AlphaSiftOpportunitiesApiTestCase(unittest.TestCase):
         self.assertEqual(cached["cache_used"], True)
         self.assertEqual(cached["cached_at"], "2026-06-13T02:55:00Z")
         self.assertEqual(cached["schema_version"], 2)
+        self.assertEqual(cached["source_errors"], ["provider timeout"])
         self.assertEqual(cached["hotspots"][0]["canonical_topic"], "算力")
         discover.assert_not_called()
 
@@ -518,13 +520,13 @@ class AlphaSiftOpportunitiesApiTestCase(unittest.TestCase):
                     "topic": topic,
                     "name": "算力",
                     "canonical_topic": "算力",
-                    "aliases": ["AI算力"],
+                    "aliases": "AI算力",
                     "heat_score": 88.0,
                     "stage": "加速主升",
                     "leaders": ["算力龙头"],
                     "quality_status": "stale",
-                    "missing_fields": ["live_stocks"],
-                    "source_errors": ["none: no live detail rows"],
+                    "missing_fields": "live_stocks",
+                    "source_errors": "none: no live detail rows",
                     "fallback_used": True,
                     "stale": True,
                     "stale_age_hours": 1.5,
@@ -564,7 +566,9 @@ class AlphaSiftOpportunitiesApiTestCase(unittest.TestCase):
         self.assertEqual(payload["topic"], "AI算力")
         self.assertEqual(payload["canonical_topic"], "算力")
         self.assertEqual(payload["quality_status"], "stale")
+        self.assertEqual(payload["aliases"], ["AI算力"])
         self.assertEqual(payload["missing_fields"], ["live_stocks"])
+        self.assertEqual(payload["source_errors"], ["none: no live detail rows"])
         self.assertEqual(payload["stocks"][0]["source"], "last_good_cache.leader_stocks")
         self.assertEqual(payload["route"][0]["title"], "AI算力催化")
 
