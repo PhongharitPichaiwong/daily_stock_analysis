@@ -8,11 +8,12 @@ import ipaddress
 import json
 import logging
 import re
+import socket
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Any, Dict, List, Optional
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 from xml.etree import ElementTree as ET
 
 import requests
@@ -27,6 +28,8 @@ _ALLOWED_SCOPE_TYPES = {"symbol", "market", "sector"}
 _ALLOWED_MARKETS = {"cn", "hk", "us", "global"}
 _PRIVATE_HOSTNAMES = {"localhost", "localhost.localdomain"}
 _MAX_FEED_BYTES = 2 * 1024 * 1024
+_MAX_REDIRECTS = 5
+_REDIRECT_STATUS_CODES = {301, 302, 303, 307, 308}
 
 
 class IntelligenceServiceError(ValueError):
@@ -114,16 +117,24 @@ class IntelligenceService:
             raise
 
     def fetch_enabled_sources(self) -> Dict[str, Any]:
-        rows, _ = self.repo.list_sources(enabled=True, page=1, page_size=100)
+        source_ids: List[int] = []
+        page = 1
+        while True:
+            rows, total = self.repo.list_sources(enabled=True, page=page, page_size=100)
+            source_ids.extend(row.id for row in rows)
+            if not rows or len(source_ids) >= total:
+                break
+            page += 1
+
         results = []
-        for row in rows:
+        for source_id in source_ids:
             try:
-                results.append(self.fetch_source(row.id))
+                results.append(self.fetch_source(source_id))
             except Exception as exc:
-                results.append({"ok": False, "source_id": row.id, "error": self._sanitize_error(exc)})
+                results.append({"ok": False, "source_id": source_id, "error": self._sanitize_error(exc)})
         return {
             "ok": True,
-            "source_count": len(rows),
+            "source_count": len(source_ids),
             "results": results,
             "saved_count": sum(int(item.get("saved_count") or 0) for item in results),
         }
@@ -176,24 +187,79 @@ class IntelligenceService:
         try:
             ip = ipaddress.ip_address(hostname)
         except ValueError:
+            self._validate_resolved_hostname(hostname)
             return
-        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+        if self._is_blocked_ip(ip):
             raise IntelligenceServiceError("source url must not target private or local network addresses")
 
     def _fetch_feed_entries(self, fields: Dict[str, Any], *, limit: int) -> List[FeedEntry]:
         self._validate_url(fields["url"])
-        response = requests.get(
-            fields["url"],
-            timeout=max(1, min(float(self.config.news_intel_fetch_timeout_sec), 30.0)),
-            headers={"User-Agent": "daily-stock-analysis-intel/1.0"},
-            allow_redirects=True,
-        )
-        self._validate_url(response.url or fields["url"])
+        response = self._get_feed_response(fields["url"])
         response.raise_for_status()
         content = response.content[: _MAX_FEED_BYTES + 1]
         if len(content) > _MAX_FEED_BYTES:
             raise IntelligenceServiceError("feed response is too large")
         return self._parse_feed(content, source_name=fields["name"], limit=limit)
+
+    def _get_feed_response(self, raw_url: str) -> requests.Response:
+        current_url = raw_url
+        timeout = max(1, min(float(self.config.news_intel_fetch_timeout_sec), 30.0))
+        headers = {"User-Agent": "daily-stock-analysis-intel/1.0"}
+        for redirect_index in range(_MAX_REDIRECTS + 1):
+            self._validate_url(current_url)
+            response = requests.get(
+                current_url,
+                timeout=timeout,
+                headers=headers,
+                allow_redirects=False,
+            )
+            status_code = self._response_status_code(response)
+            if status_code not in _REDIRECT_STATUS_CODES:
+                self._validate_url(response.url or current_url)
+                return response
+            if redirect_index >= _MAX_REDIRECTS:
+                raise IntelligenceServiceError("too many redirects while fetching source url")
+            location = response.headers.get("Location") if response.headers else None
+            if not location:
+                raise IntelligenceServiceError("redirect response is missing Location header")
+            current_url = urljoin(current_url, location.strip())
+            self._validate_url(current_url)
+        raise IntelligenceServiceError("too many redirects while fetching source url")
+
+    @staticmethod
+    def _response_status_code(response: requests.Response) -> int:
+        try:
+            return int(getattr(response, "status_code", 0) or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    @staticmethod
+    def _validate_resolved_hostname(hostname: str) -> None:
+        try:
+            addrinfos = socket.getaddrinfo(hostname, None, type=socket.SOCK_STREAM)
+        except socket.gaierror as exc:
+            raise IntelligenceServiceError("source url host could not be resolved") from exc
+        if not addrinfos:
+            raise IntelligenceServiceError("source url host could not be resolved")
+        for addrinfo in addrinfos:
+            address = addrinfo[4][0]
+            try:
+                ip = ipaddress.ip_address(address)
+            except ValueError as exc:
+                raise IntelligenceServiceError("source url resolved to an invalid address") from exc
+            if IntelligenceService._is_blocked_ip(ip):
+                raise IntelligenceServiceError("source url must not target private or local network addresses")
+
+    @staticmethod
+    def _is_blocked_ip(ip: ipaddress._BaseAddress) -> bool:
+        return (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_reserved
+            or ip.is_multicast
+            or ip.is_unspecified
+        )
 
     def _parse_feed(self, content: bytes, *, source_name: str, limit: int) -> List[FeedEntry]:
         try:
