@@ -32,6 +32,7 @@ _MAX_FEED_BYTES = 2 * 1024 * 1024
 _MAX_REDIRECTS = 5
 _REDIRECT_STATUS_CODES = {301, 302, 303, 307, 308}
 _DNS_GUARD_LOCK = threading.RLock()
+_DISABLE_REQUEST_PROXIES = {"http": None, "https": None}
 
 
 class IntelligenceServiceError(ValueError):
@@ -248,7 +249,9 @@ class IntelligenceService:
         with _DNS_GUARD_LOCK:
             socket.getaddrinfo = guarded_getaddrinfo
             try:
-                return requests.get(raw_url, **kwargs)
+                request_kwargs = dict(kwargs)
+                request_kwargs.setdefault("proxies", _DISABLE_REQUEST_PROXIES)
+                return requests.get(raw_url, **request_kwargs)
             finally:
                 socket.getaddrinfo = original_getaddrinfo
 
@@ -309,18 +312,11 @@ class IntelligenceService:
             except ValueError as exc:
                 raise IntelligenceServiceError("source url resolved to an invalid address") from exc
             if IntelligenceService._is_blocked_ip(ip):
-                raise IntelligenceServiceError("source url must not target private or local network addresses")
+                raise IntelligenceServiceError("source url must resolve to a public internet address")
 
     @staticmethod
     def _is_blocked_ip(ip: ipaddress._BaseAddress) -> bool:
-        return (
-            ip.is_private
-            or ip.is_loopback
-            or ip.is_link_local
-            or ip.is_reserved
-            or ip.is_multicast
-            or ip.is_unspecified
-        )
+        return not ip.is_global
 
     def _parse_feed(self, content: bytes, *, source_name: str, limit: int) -> List[FeedEntry]:
         try:

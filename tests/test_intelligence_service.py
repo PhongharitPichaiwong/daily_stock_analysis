@@ -104,6 +104,12 @@ class IntelligenceServiceTestCase(unittest.TestCase):
             with self.assertRaises(IntelligenceServiceError):
                 self.service.create_source({"name": "bad", "url": "https://metadata.example.com/rss.xml", "scope_type": "market"})
 
+    def test_shared_address_space_url_is_rejected(self) -> None:
+        shared_dns = [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("100.64.0.1", 0))]
+        with patch("src.services.intelligence_service.socket.getaddrinfo", return_value=shared_dns):
+            with self.assertRaises(IntelligenceServiceError):
+                self.service.create_source({"name": "bad", "url": "https://metadata.example.com/rss.xml", "scope_type": "market"})
+
     def test_generated_no_url_sentinel_is_rejected_for_source_url(self) -> None:
         with self.assertRaisesRegex(IntelligenceServiceError, "absolute http\\(s\\) URL"):
             self.service.create_source({"name": "bad", "url": "no-url:intel:anything", "scope_type": "market"})
@@ -124,8 +130,21 @@ class IntelligenceServiceTestCase(unittest.TestCase):
         with self._public_dns(), patch("src.services.intelligence_service.requests.get", return_value=redirect) as mock_get:
             with self.assertRaises(IntelligenceServiceError):
                 self.service.fetch_source(source["id"])
+            self.assertEqual(mock_get.call_count, 1)
+            self.assertFalse(mock_get.call_args.kwargs["allow_redirects"])
+
+    def test_fetch_requests_disable_environment_proxies(self) -> None:
+        with self._public_dns():
+            source = self.service.create_source({
+                "name": "proxy-safe-feed",
+                "url": "https://feeds.example.com/rss.xml",
+                "scope_type": "market",
+            })
+        with patch.dict(os.environ, {"HTTP_PROXY": "http://127.0.0.1:3128", "HTTPS_PROXY": "http://127.0.0.1:3128", "ALL_PROXY": "http://127.0.0.1:3128"}):
+            with self._public_dns(), patch("src.services.intelligence_service.requests.get", return_value=self._mock_response()) as mock_get:
+                self.service.fetch_source(source["id"])
         self.assertEqual(mock_get.call_count, 1)
-        self.assertFalse(mock_get.call_args.kwargs["allow_redirects"])
+        self.assertEqual(mock_get.call_args.kwargs["proxies"], {"http": None, "https": None})
 
     def test_fetch_validates_dns_resolution_used_by_request(self) -> None:
         public_dns = [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))]
