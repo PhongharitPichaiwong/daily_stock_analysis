@@ -25,6 +25,6 @@
 - 不承诺完整日韩全市场股票列表；Web 自动补全当前仅覆盖仓内种子索引中的常用标的，未命中时仍可手动输入 suffix 代码。
 - 不承诺 bare code 自动补齐与历史/任务链路改造；`000660`、`005930` 等 6 位输入当前仍按既有 A 股语义处理，后续需单独评审后端解析与回显链路。
 - 不补齐 Portfolio 的 JPY/KRW 汇率、成本、市值完整口径；相关字段仅放开市场类型以避免前后端校验拒绝。
-- 本次改动仅补齐 JP/KR 建议渲染与远端 stock-index market 白名单，不改动 provider/model/base URL 或运行时配置清理/迁移语义；未改造后端 bare-code 解析、历史/任务展示链路与模型路由边界，仍按既有行为运行。
+- 本次改动仅补齐 JP/KR 建议渲染与远端 stock-index market 白名单，不改动 provider/model/base URL 或运行时配置清理/迁移语义；未改造后端 bare-code 解析、历史/任务展示链路与模型路由边界，仍按既有行为运行，也未改动 `api/v1/endpoints/analysis.py`、`api/v1/endpoints/history.py`、`src/data/stock_index_loader.py`、`src/services/history_service.py` 等后端校验/展示路径。
 
 回滚方式：移除 `jp/kr` 市场识别、交易日历注册、YFinance 路由扩展、Web/API 类型放行、`scripts/stock_index_seeds/` 日韩种子索引，并删除本文档中的能力声明。
