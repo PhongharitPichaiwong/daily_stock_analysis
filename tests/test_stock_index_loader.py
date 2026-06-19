@@ -224,6 +224,25 @@ class TestStockIndexLoader(unittest.TestCase):
                 self.assertEqual(stock_index_loader.resolve_index_stock_code("005930"), "005930.KS")
                 self.assertEqual(stock_index_loader.resolve_index_stock_code("7203"), "7203.T")
 
+    def test_resolve_index_stock_code_reuses_cached_lookup(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            bundled_path = Path(temp_dir) / "stocks.index.json"
+            bundled_path.write_text(
+                json.dumps(
+                    [["005930.KS", "005930.KS", "Samsung", "samsung", "ss", [], "KR", "stock", True, 100]],
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            with patch.object(stock_index_loader, "get_remote_stock_index_cache_path", return_value=Path(temp_dir) / "missing.json"), \
+                 patch.object(stock_index_loader, "get_stock_index_candidate_paths", return_value=(bundled_path,)), \
+                 patch.object(stock_index_loader, "_load_stock_index_payload", wraps=stock_index_loader._load_stock_index_payload) as load_payload:
+                self.assertEqual(stock_index_loader.resolve_index_stock_code("005930"), "005930.KS")
+                self.assertEqual(stock_index_loader.resolve_index_stock_code("005930"), "005930.KS")
+
+            self.assertEqual(load_payload.call_count, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

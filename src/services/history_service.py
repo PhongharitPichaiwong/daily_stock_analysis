@@ -111,6 +111,19 @@ class HistoryService:
             if unpadded_digits:
                 add(f"{unpadded_digits}.HK")
 
+        resolved = resolve_index_stock_code(raw_canonical) or resolve_index_stock_code(normalized)
+        resolved_normalized = ""
+        if resolved:
+            try:
+                resolved_normalized = canonical_stock_code(normalize_stock_code(resolved))
+            except Exception:
+                resolved_normalized = resolved
+            add(resolved)
+            add(resolved_normalized)
+            resolved_base = str(resolved_normalized or resolved).split(".", 1)[0]
+            if resolved_base and resolved_base.isdigit():
+                add(resolved_base)
+
         add(raw_canonical)
         add(normalized)
 

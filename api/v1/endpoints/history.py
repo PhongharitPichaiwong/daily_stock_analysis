@@ -275,7 +275,8 @@ def get_stock_bar(
         # Deduplicate by normalized code, keeping the record with highest id
         seen: dict = {}
         for record in records:
-            norm_code = _normalize_code_for_grouping(record.code or "")
+            display_code = service._display_stock_code(record.code or "")
+            norm_code = _normalize_code_for_grouping(display_code)
             if norm_code not in seen or record.id > seen[norm_code].id:
                 seen[norm_code] = record
 
@@ -296,13 +297,11 @@ def get_stock_bar(
                 ),
             )
 
+            display_stock_code = service._display_stock_code(record.code)
             analysis_count = db_manager.get_analysis_history_paginated(
-                code=HistoryService._history_code_filter_candidates(
-                    record.code or "",
-                ),
+                code=HistoryService._history_code_filter_candidates(display_stock_code),
                 limit=1,
             )[1]
-            display_stock_code = service._display_stock_code(record.code)
             items.append(
                 StockBarItem(
                     id=record.id,

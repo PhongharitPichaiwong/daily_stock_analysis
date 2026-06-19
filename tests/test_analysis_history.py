@@ -248,6 +248,55 @@ class AnalysisHistoryTestCase(unittest.TestCase):
         self.assertEqual(detail["stock_code"], "005930.KS")
         self.assertEqual(detail["market_phase_summary"], expected_phase_summary)
 
+    def test_history_filter_and_stock_bar_merge_bare_and_resolved_jp_kr_codes(self) -> None:
+        if get_stock_bar is None:
+            self.skipTest("fastapi is not installed in this test environment")
+
+        legacy = self._build_result()
+        legacy.code = "005930"
+        legacy.name = "Samsung Electronics"
+        current = self._build_result()
+        current.code = "005930.KS"
+        current.name = "Samsung Electronics"
+
+        self.assertGreater(
+            self.db.save_analysis_history(
+                result=legacy,
+                query_id="query_kr_legacy",
+                report_type="simple",
+                news_content="news",
+                context_snapshot={"market_phase_summary": _market_phase_summary()},
+                save_snapshot=True,
+            ),
+            0,
+        )
+        self.assertGreater(
+            self.db.save_analysis_history(
+                result=current,
+                query_id="query_kr_current",
+                report_type="simple",
+                news_content="news",
+                context_snapshot={"market_phase_summary": _market_phase_summary()},
+                save_snapshot=True,
+            ),
+            0,
+        )
+
+        with patch("src.services.history_service.resolve_index_stock_code", side_effect=lambda code: "005930.KS" if str(code).split(".", 1)[0] == "005930" else None):
+            listing = HistoryService(self.db).get_history_list(stock_code="005930.KS", page=1, limit=10)
+            stock_bar = get_stock_bar(
+                start_date=None,
+                end_date=None,
+                limit=10,
+                db_manager=self.db,
+            )
+
+        self.assertEqual(listing["total"], 2)
+        self.assertEqual({item["query_id"] for item in listing["items"]}, {"query_kr_legacy", "query_kr_current"})
+        self.assertEqual(len(stock_bar.items), 1)
+        self.assertEqual(stock_bar.items[0].stock_code, "005930.KS")
+        self.assertEqual(stock_bar.items[0].analysis_count, 2)
+
     def test_save_analysis_history_persists_sniper_columns_via_shared_parser(self) -> None:
         """迁出 sniper parser 后历史狙击点位列仍按原规则保存。"""
         result = self._build_result()

@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 _STOCK_INDEX_FILENAME = "stocks.index.json"
 _STOCK_INDEX_CACHE: Dict[str, str] | None = None
+_STOCK_CODE_LOOKUP_CACHE: Dict[str, str] | None = None
 _REMOTE_INDEX_VALIDITY_CACHE: tuple[Path, float, int, bool] | None = None
 _STOCK_INDEX_CACHE_LOCK = RLock()
 
@@ -295,6 +296,41 @@ def resolve_index_stock_code(query: str) -> str | None:
     if not code:
         return None
 
+    return get_stock_code_index_map().get(code)
+
+
+def get_stock_code_index_map() -> Dict[str, str]:
+    """Lazily load and cache generated stock-code lookup entries."""
+    global _STOCK_CODE_LOOKUP_CACHE
+
+    if _STOCK_CODE_LOOKUP_CACHE is not None:
+        return _STOCK_CODE_LOOKUP_CACHE
+
+    with _STOCK_INDEX_CACHE_LOCK:
+        if _STOCK_CODE_LOOKUP_CACHE is not None:
+            return _STOCK_CODE_LOOKUP_CACHE
+
+        merged_lookup: Dict[str, str] = {}
+        remote_path = get_remote_stock_index_cache_path()
+        for index_path in _get_fresh_stock_index_candidates(get_stock_index_candidate_paths(), remote_path):
+            try:
+                raw_items = _load_stock_index_payload(index_path)
+                if _same_path(index_path, remote_path):
+                    validate_stock_index_payload(raw_items)
+                for key, value in _build_stock_code_lookup(raw_items).items():
+                    merged_lookup.setdefault(key, value)
+            except (OSError, TypeError, ValueError) as exc:
+                logger.debug("[鑲＄エ绱㈠紩] 瑙ｆ瀽浠ｇ爜绱㈠紩澶辫触 %s: %s", index_path, exc)
+
+        _STOCK_CODE_LOOKUP_CACHE = merged_lookup
+        return _STOCK_CODE_LOOKUP_CACHE
+
+
+def _resolve_index_stock_code_uncached(query: str) -> str | None:
+    code = str(query or "").strip().upper()
+    if not code:
+        return None
+
     remote_path = get_remote_stock_index_cache_path()
     for index_path in _get_fresh_stock_index_candidates(get_stock_index_candidate_paths(), remote_path):
         try:
@@ -312,9 +348,10 @@ def resolve_index_stock_code(query: str) -> str | None:
 
 def clear_stock_index_cache() -> None:
     """Clear the in-process stock index lookup cache."""
-    global _REMOTE_INDEX_VALIDITY_CACHE, _STOCK_INDEX_CACHE
+    global _REMOTE_INDEX_VALIDITY_CACHE, _STOCK_INDEX_CACHE, _STOCK_CODE_LOOKUP_CACHE
     with _STOCK_INDEX_CACHE_LOCK:
         _STOCK_INDEX_CACHE = None
+        _STOCK_CODE_LOOKUP_CACHE = None
         _REMOTE_INDEX_VALIDITY_CACHE = None
 
 
