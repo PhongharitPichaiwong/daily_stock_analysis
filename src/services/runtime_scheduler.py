@@ -6,6 +6,7 @@ from __future__ import annotations
 import logging
 import os
 import threading
+import _thread
 from datetime import datetime
 from types import SimpleNamespace
 from typing import Any, Callable, Dict, List, Optional
@@ -111,6 +112,18 @@ class RuntimeSchedulerService:
     def _is_schedule_enabled(self, config: Config) -> bool:
         return self._force_enabled or bool(getattr(config, "schedule_enabled", False))
 
+    @staticmethod
+    def _run_in_background_thread(target: Callable[[], None]) -> None:
+        """Run a callback in a background thread without blocking startup."""
+        try:
+            _thread.start_new_thread(target, ())
+            return
+        except Exception:
+            # Best-effort fallback for environments where the low-level thread API
+            # is unavailable or restricted.
+            thread = threading.Thread(target=target, daemon=True)
+            thread.start()
+
     def start(self, *, run_immediately: bool = False) -> None:
         with self._lock:
             if not self._owns_schedule:
@@ -131,7 +144,11 @@ class RuntimeSchedulerService:
                 schedule_times_provider=self._current_times,
                 register_signals=False,
             )
-            scheduler.set_daily_task(self._run_analysis_once, run_immediately=run_immediately)
+            if run_immediately and getattr(self, "_run_immediately_in_background", False):
+                scheduler.set_daily_task(self._run_analysis_once, run_immediately=False)
+                self._run_in_background_thread(self._run_analysis_once)
+            else:
+                scheduler.set_daily_task(self._run_analysis_once, run_immediately=run_immediately)
             thread = threading.Thread(
                 target=scheduler.run,
                 daemon=True,

@@ -217,10 +217,12 @@ async def app_lifespan(app: FastAPI):
         }
     os.environ.pop(RUNTIME_SCHEDULER_FORCE_ENABLED_ENV, None)
     os.environ.pop(RUNTIME_SCHEDULER_RUN_IMMEDIATELY_ENV, None)
-    app.state.runtime_scheduler_service = RuntimeSchedulerService(
+    runtime_scheduler_service = RuntimeSchedulerService(
         owns_schedule=runtime_owns_schedule,
         force_enabled=runtime_force_enabled,
     )
+    runtime_scheduler_service._run_immediately_in_background = True
+    app.state.runtime_scheduler_service = runtime_scheduler_service
     app.state.runtime_scheduler_service.reconcile_from_config(
         run_immediately=runtime_run_immediately,
     )

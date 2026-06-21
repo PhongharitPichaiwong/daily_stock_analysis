@@ -1229,7 +1229,10 @@ def main() -> int:
         # The API runtime scheduler owns schedules once the Web/API service starts.
         # This keeps Web settings, status, and run-now actions attached to the real
         # scheduler instead of a separate CLI loop.
-        os.environ.pop(CLI_SCHEDULER_OWNER_ENV, None)
+        if args.serve_only:
+            os.environ[CLI_SCHEDULER_OWNER_ENV] = "true"
+        else:
+            os.environ.pop(CLI_SCHEDULER_OWNER_ENV, None)
         runtime_schedule_requested = not args.serve_only and (
             args.schedule or config.schedule_enabled
         )
