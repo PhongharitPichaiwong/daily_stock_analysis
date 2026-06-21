@@ -63,7 +63,17 @@ def run_scheduler_now(
     scheduler: RuntimeSchedulerService = Depends(get_runtime_scheduler_service),
 ) -> dict:
     """Trigger one runtime scheduled analysis run."""
-    return scheduler.run_now()
+    result = scheduler.run_now()
+    if not result.get("accepted", False):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "scheduler_busy",
+                "message": "A scheduled analysis is already running",
+                "reason": result.get("reason", "analysis_already_running"),
+            },
+        )
+    return result
 
 
 class EnvBackupAccessDenied(Exception):

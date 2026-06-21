@@ -12,6 +12,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from src.services.runtime_scheduler import (
@@ -118,6 +119,43 @@ class RuntimeSchedulerServiceTestCase(unittest.TestCase):
         status = service.status()
         self.assertIsNone(status["last_success_at"])
         self.assertIn("reported failure", status["last_error"])
+
+    def test_run_now_rejects_when_analysis_is_already_running(self) -> None:
+        config = SimpleNamespace(
+            schedule_enabled=True,
+            schedule_time="18:00",
+            schedule_times=["18:00"],
+        )
+        service = RuntimeSchedulerService(config_provider=lambda: config)
+        service._run_lock.acquire()
+        try:
+            result = service.run_now()
+        finally:
+            service._run_lock.release()
+
+        self.assertFalse(result["accepted"])
+        self.assertTrue(result["running"])
+        self.assertEqual(result["reason"], "analysis_already_running")
+        status = service.status()
+        self.assertEqual(status["last_skip_reason"], "analysis_already_running")
+        self.assertIsNotNone(status["last_skipped_at"])
+
+    def test_run_now_endpoint_returns_conflict_when_scheduler_is_busy(self) -> None:
+        from api.v1.endpoints.system_config import run_scheduler_now
+
+        scheduler = MagicMock()
+        scheduler.run_now.return_value = {
+            "accepted": False,
+            "running": True,
+            "reason": "analysis_already_running",
+        }
+
+        with self.assertRaises(HTTPException) as captured:
+            run_scheduler_now(scheduler=scheduler)
+
+        self.assertEqual(captured.exception.status_code, 409)
+        self.assertEqual(captured.exception.detail["error"], "scheduler_busy")
+        self.assertEqual(captured.exception.detail["reason"], "analysis_already_running")
 
     def test_reconcile_replaces_daily_jobs_without_triggering_old_jobs(self) -> None:
         fake_schedule = _FakeScheduleModule()

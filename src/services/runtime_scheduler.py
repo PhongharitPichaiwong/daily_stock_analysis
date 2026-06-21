@@ -121,13 +121,12 @@ class RuntimeSchedulerService:
 
         return _reload_runtime_config()
 
-    def _run_analysis_once(self) -> None:
-        if not self._run_lock.acquire(blocking=False):
-            self._last_skipped_at = datetime.now().isoformat()
-            self._last_skip_reason = "analysis_already_running"
-            logger.warning("Runtime scheduler skipped run: analysis already running")
-            return
+    def _record_analysis_busy_skip(self) -> None:
+        self._last_skipped_at = datetime.now().isoformat()
+        self._last_skip_reason = "analysis_already_running"
+        logger.warning("Runtime scheduler skipped run: analysis already running")
 
+    def _run_analysis_locked(self) -> None:
         try:
             config = self._reload_config()
             runner = self._task_runner
@@ -144,6 +143,13 @@ class RuntimeSchedulerService:
         except Exception as exc:  # noqa: BLE001 - scheduled runs must not kill API process.
             self._last_error = str(exc)
             logger.exception("Runtime scheduled analysis failed: %s", exc)
+
+    def _run_analysis_once(self) -> None:
+        if not self._run_lock.acquire(blocking=False):
+            self._record_analysis_busy_skip()
+            return
+        try:
+            self._run_analysis_locked()
         finally:
             self._run_lock.release()
 
@@ -246,12 +252,30 @@ class RuntimeSchedulerService:
             self.stop()
 
     def run_now(self) -> Dict[str, Any]:
+        if not self._run_lock.acquire(blocking=False):
+            self._record_analysis_busy_skip()
+            return {
+                "accepted": False,
+                "running": True,
+                "reason": "analysis_already_running",
+            }
+
+        def run_and_release() -> None:
+            try:
+                self._run_analysis_locked()
+            finally:
+                self._run_lock.release()
+
         worker = threading.Thread(
-            target=self._run_analysis_once,
+            target=run_and_release,
             daemon=True,
             name="runtime-scheduler-run-now",
         )
-        worker.start()
+        try:
+            worker.start()
+        except Exception:
+            self._run_lock.release()
+            raise
         return {"accepted": True, "running": True}
 
     def status(self) -> Dict[str, Any]:

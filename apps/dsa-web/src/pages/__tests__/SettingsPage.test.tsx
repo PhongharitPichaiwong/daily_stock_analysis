@@ -1154,6 +1154,62 @@ describe('SettingsPage', () => {
     await waitFor(() => expect(runSchedulerNow).toHaveBeenCalledTimes(1));
   });
 
+  it('shows an error when run-now is rejected because analysis is already running', async () => {
+    runSchedulerNow.mockRejectedValueOnce(new Error('A scheduled analysis is already running'));
+    const configState = buildSystemConfigState();
+    useSystemConfigMock.mockReturnValue(buildSystemConfigState({
+      activeCategory: 'system',
+      itemsByCategory: {
+        ...configState.itemsByCategory,
+        system: [
+          ...configState.itemsByCategory.system,
+          {
+            key: 'SCHEDULE_ENABLED',
+            value: 'true',
+            rawValueExists: true,
+            isMasked: false,
+            schema: {
+              key: 'SCHEDULE_ENABLED',
+              category: 'system',
+              dataType: 'boolean',
+              uiControl: 'switch',
+              isSensitive: false,
+              isRequired: false,
+              isEditable: true,
+              options: [],
+              validation: {},
+              displayOrder: 8,
+            },
+          },
+          {
+            key: 'SCHEDULE_TIMES',
+            value: '18:00',
+            rawValueExists: true,
+            isMasked: false,
+            schema: {
+              key: 'SCHEDULE_TIMES',
+              category: 'system',
+              dataType: 'string',
+              uiControl: 'text',
+              isSensitive: false,
+              isEditable: true,
+              options: [],
+              validation: {},
+              displayOrder: 11,
+            },
+          },
+        ],
+      },
+    }));
+
+    render(<SettingsPage />);
+
+    fireEvent.click(await screen.findByTestId('scheduler-run-now-button'));
+
+    await waitFor(() => expect(runSchedulerNow).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText(/A scheduled analysis is already running/)).toBeInTheDocument();
+  });
+
   it('does not show a failed run as the last successful scheduler run', async () => {
     const configState = buildSystemConfigState();
     getSchedulerStatus.mockResolvedValueOnce({

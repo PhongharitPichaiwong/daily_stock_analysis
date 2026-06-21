@@ -169,6 +169,7 @@ export interface SchedulerStatusResponse {
 export interface SchedulerRunNowResponse {
   accepted: boolean;
   running: boolean;
+  reason?: string;
 }
 
 export interface TestLLMChannelRequest {
