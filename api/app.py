@@ -16,6 +16,7 @@ FastAPI 应用工厂模块
 """
 
 import asyncio
+import json
 import logging
 import mimetypes
 import os
@@ -141,6 +142,7 @@ from src.data.stock_index_loader import find_existing_stock_index_path
 from src.services.system_config_service import SystemConfigService
 from src.services.runtime_scheduler import (
     CLI_SCHEDULER_OWNER_ENV,
+    RUNTIME_SCHEDULER_ARGS_ENV,
     RUNTIME_SCHEDULER_FORCE_ENABLED_ENV,
     RUNTIME_SCHEDULER_RUN_IMMEDIATELY_ENV,
     RUNTIME_SCHEDULER_SUPPRESS_START_ENV,
@@ -187,6 +189,21 @@ def _schedule_stock_index_background_refresh(app: FastAPI, reason: str) -> None:
     )
 
 
+def _load_runtime_scheduler_args() -> dict:
+    raw_value = os.getenv(RUNTIME_SCHEDULER_ARGS_ENV)
+    if not raw_value:
+        return {}
+    try:
+        parsed = json.loads(raw_value)
+    except json.JSONDecodeError:
+        logger.warning("Invalid %s payload; runtime scheduler uses default args", RUNTIME_SCHEDULER_ARGS_ENV)
+        return {}
+    if not isinstance(parsed, dict):
+        logger.warning("%s payload is not an object; runtime scheduler uses default args", RUNTIME_SCHEDULER_ARGS_ENV)
+        return {}
+    return parsed
+
+
 @asynccontextmanager
 async def app_lifespan(app: FastAPI):
     """Initialize and release shared services for the app lifecycle."""
@@ -222,13 +239,16 @@ async def app_lifespan(app: FastAPI):
             "yes",
             "on",
         }
+    runtime_scheduler_args = _load_runtime_scheduler_args()
     os.environ.pop(RUNTIME_SCHEDULER_FORCE_ENABLED_ENV, None)
     os.environ.pop(RUNTIME_SCHEDULER_RUN_IMMEDIATELY_ENV, None)
     os.environ.pop(RUNTIME_SCHEDULER_SUPPRESS_START_ENV, None)
+    os.environ.pop(RUNTIME_SCHEDULER_ARGS_ENV, None)
     runtime_scheduler_service = RuntimeSchedulerService(
         owns_schedule=runtime_owns_schedule,
         force_enabled=runtime_force_enabled,
         run_immediately_in_background=True,
+        schedule_args_overrides=runtime_scheduler_args,
     )
     app.state.runtime_scheduler_service = runtime_scheduler_service
     if not runtime_suppress_start:

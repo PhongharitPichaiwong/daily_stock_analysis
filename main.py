@@ -23,6 +23,7 @@ A股自选股智能分析系统 - 主调度程序
 """
 from __future__ import annotations
 
+import json
 import multiprocessing
 import os
 from pathlib import Path
@@ -1222,6 +1223,7 @@ def main() -> int:
     if start_serve:
         from src.services.runtime_scheduler import (
             CLI_SCHEDULER_OWNER_ENV,
+            RUNTIME_SCHEDULER_ARGS_ENV,
             RUNTIME_SCHEDULER_FORCE_ENABLED_ENV,
             RUNTIME_SCHEDULER_RUN_IMMEDIATELY_ENV,
             RUNTIME_SCHEDULER_SUPPRESS_START_ENV,
@@ -1251,6 +1253,15 @@ def main() -> int:
             )
         else:
             os.environ.pop(RUNTIME_SCHEDULER_RUN_IMMEDIATELY_ENV, None)
+        os.environ[RUNTIME_SCHEDULER_ARGS_ENV] = json.dumps({
+            "no_notify": bool(getattr(args, "no_notify", False)),
+            "no_market_review": bool(getattr(args, "no_market_review", False)),
+            "dry_run": bool(getattr(args, "dry_run", False)),
+            "force_run": bool(getattr(args, "force_run", False)),
+            "single_notify": bool(getattr(args, "single_notify", False)),
+            "no_context_snapshot": bool(getattr(args, "no_context_snapshot", False)),
+            "workers": getattr(args, "workers", None),
+        })
         if not prepare_webui_frontend_assets():
             logger.warning("前端静态资源未就绪，继续启动 FastAPI 服务（Web 页面可能不可用）")
         try:

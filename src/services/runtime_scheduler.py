@@ -19,6 +19,16 @@ CLI_SCHEDULER_OWNER_ENV = "DSA_CLI_SCHEDULER_OWNS_SCHEDULE"
 RUNTIME_SCHEDULER_FORCE_ENABLED_ENV = "DSA_RUNTIME_SCHEDULER_FORCE_ENABLED"
 RUNTIME_SCHEDULER_RUN_IMMEDIATELY_ENV = "DSA_RUNTIME_SCHEDULER_RUN_IMMEDIATELY"
 RUNTIME_SCHEDULER_SUPPRESS_START_ENV = "DSA_RUNTIME_SCHEDULER_SUPPRESS_START"
+RUNTIME_SCHEDULER_ARGS_ENV = "DSA_RUNTIME_SCHEDULER_ARGS"
+SCHEDULE_ARGS_OVERRIDE_KEYS = {
+    "no_notify",
+    "no_market_review",
+    "dry_run",
+    "force_run",
+    "single_notify",
+    "no_context_snapshot",
+    "workers",
+}
 
 
 def _agent_event_monitor_interval_seconds(config: Config) -> int:
@@ -79,6 +89,7 @@ class RuntimeSchedulerService:
         force_enabled: bool = False,
         run_immediately_in_background: bool = False,
         background_tasks_provider: Optional[Callable[[Config], List[Dict[str, Any]]]] = None,
+        schedule_args_overrides: Optional[Dict[str, Any]] = None,
     ) -> None:
         self._config_provider = config_provider
         self._task_runner = task_runner
@@ -93,6 +104,11 @@ class RuntimeSchedulerService:
         self._force_enabled = force_enabled
         self._run_immediately_in_background = run_immediately_in_background
         self._background_tasks_provider = background_tasks_provider
+        self._schedule_args_overrides = {
+            key: value
+            for key, value in (schedule_args_overrides or {}).items()
+            if key in SCHEDULE_ARGS_OVERRIDE_KEYS
+        }
         self._background_task_cache: Dict[str, Dict[str, Any]] = {}
         self._background_task_registered_names: Set[str] = set()
         self._lock = threading.RLock()
@@ -106,23 +122,24 @@ class RuntimeSchedulerService:
         self._last_skipped_at: Optional[str] = None
         self._last_skip_reason: Optional[str] = None
 
-    @staticmethod
-    def _make_schedule_args() -> SimpleNamespace:
-        return SimpleNamespace(
-            schedule=True,
-            no_run_immediately=True,
-            no_notify=False,
-            no_market_review=False,
-            dry_run=False,
-            force_run=False,
-            single_notify=False,
-            no_context_snapshot=False,
-            market_review=False,
-            serve=False,
-            serve_only=True,
-            stocks=None,
-            workers=None,
-        )
+    def _make_schedule_args(self) -> SimpleNamespace:
+        defaults = {
+            "schedule": True,
+            "no_run_immediately": True,
+            "no_notify": False,
+            "no_market_review": False,
+            "dry_run": False,
+            "force_run": False,
+            "single_notify": False,
+            "no_context_snapshot": False,
+            "market_review": False,
+            "serve": False,
+            "serve_only": True,
+            "stocks": None,
+            "workers": None,
+        }
+        defaults.update(self._schedule_args_overrides)
+        return SimpleNamespace(**defaults)
 
     def _reload_config(self) -> Config:
         from main import _reload_runtime_config

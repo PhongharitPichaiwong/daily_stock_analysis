@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 import tempfile
@@ -17,6 +18,7 @@ from fastapi.testclient import TestClient
 
 from src.services.runtime_scheduler import (
     CLI_SCHEDULER_OWNER_ENV,
+    RUNTIME_SCHEDULER_ARGS_ENV,
     RUNTIME_SCHEDULER_FORCE_ENABLED_ENV,
     RUNTIME_SCHEDULER_RUN_IMMEDIATELY_ENV,
     RUNTIME_SCHEDULER_SUPPRESS_START_ENV,
@@ -101,6 +103,46 @@ class RuntimeSchedulerServiceTestCase(unittest.TestCase):
         self.assertEqual(len(seen_args), 1)
         self.assertTrue(hasattr(seen_args[0], "workers"))
         self.assertIsNone(seen_args[0].workers)
+
+    def test_run_analysis_args_preserve_startup_schedule_flags(self) -> None:
+        config = SimpleNamespace(
+            schedule_enabled=True,
+            schedule_time="18:00",
+            schedule_times=["18:00"],
+        )
+        seen_args = []
+
+        def runner(config_arg, args, stock_codes):
+            seen_args.append(args)
+
+        service = RuntimeSchedulerService(
+            config_provider=lambda: config,
+            task_runner=runner,
+            schedule_args_overrides={
+                "no_notify": True,
+                "no_market_review": True,
+                "dry_run": True,
+                "force_run": True,
+                "single_notify": True,
+                "no_context_snapshot": True,
+                "workers": 3,
+                "serve": True,
+            },
+        )
+        service._reload_config = lambda: config
+
+        service._run_analysis_once()
+
+        self.assertEqual(len(seen_args), 1)
+        self.assertTrue(seen_args[0].no_notify)
+        self.assertTrue(seen_args[0].no_market_review)
+        self.assertTrue(seen_args[0].dry_run)
+        self.assertTrue(seen_args[0].force_run)
+        self.assertTrue(seen_args[0].single_notify)
+        self.assertTrue(seen_args[0].no_context_snapshot)
+        self.assertEqual(seen_args[0].workers, 3)
+        self.assertFalse(seen_args[0].serve)
+        self.assertTrue(seen_args[0].serve_only)
 
     def test_default_runner_does_not_mark_failed_analysis_return_success(self) -> None:
         config = SimpleNamespace(
@@ -429,6 +471,7 @@ class RuntimeSchedulerServiceTestCase(unittest.TestCase):
                 owns_schedule=True,
                 force_enabled=False,
                 run_immediately_in_background=False,
+                schedule_args_overrides=None,
             ):
                 self.owns_schedule = owns_schedule
                 self.force_enabled = force_enabled
@@ -482,6 +525,7 @@ class RuntimeSchedulerServiceTestCase(unittest.TestCase):
                 owns_schedule=True,
                 force_enabled=False,
                 run_immediately_in_background=False,
+                schedule_args_overrides=None,
             ):
                 events.append(("init", owns_schedule, force_enabled, run_immediately_in_background))
 
@@ -530,6 +574,7 @@ class RuntimeSchedulerServiceTestCase(unittest.TestCase):
                 owns_schedule=True,
                 force_enabled=False,
                 run_immediately_in_background=False,
+                schedule_args_overrides=None,
             ):
                 events.append(("init", owns_schedule, force_enabled, run_immediately_in_background))
 
@@ -564,6 +609,59 @@ class RuntimeSchedulerServiceTestCase(unittest.TestCase):
         ])
         self.assertIsNone(os.getenv(RUNTIME_SCHEDULER_SUPPRESS_START_ENV))
 
+    def test_lifespan_passes_runtime_scheduler_args_overrides(self) -> None:
+        from api.app import create_app
+
+        events = []
+        runtime_args = {
+            "no_notify": True,
+            "no_market_review": True,
+            "dry_run": True,
+            "force_run": True,
+            "single_notify": True,
+            "no_context_snapshot": True,
+            "workers": 4,
+        }
+
+        class FakeRuntimeSchedulerService:
+            def __init__(
+                self,
+                *,
+                owns_schedule=True,
+                force_enabled=False,
+                run_immediately_in_background=False,
+                schedule_args_overrides=None,
+            ):
+                events.append(("init_args", schedule_args_overrides))
+
+            def reconcile_from_config(self, *, run_immediately=False, clear_enabled_override=False):
+                events.append(("reconcile", run_immediately, clear_enabled_override))
+
+            def stop(self):
+                events.append(("stop",))
+
+        class FakeSystemConfigService:
+            def __init__(self, runtime_scheduler=None):
+                self.runtime_scheduler = runtime_scheduler
+
+        with tempfile.TemporaryDirectory() as temp_dir, patch.dict(
+            os.environ,
+            {RUNTIME_SCHEDULER_ARGS_ENV: json.dumps(runtime_args)},
+            clear=False,
+        ), patch(
+            "src.config.get_config",
+            return_value=SimpleNamespace(schedule_run_immediately=True),
+        ), patch("api.app.RuntimeSchedulerService", FakeRuntimeSchedulerService), patch(
+            "api.app.SystemConfigService",
+            FakeSystemConfigService,
+        ), patch("api.app._schedule_stock_index_background_refresh"):
+            app = create_app(static_dir=Path(temp_dir))
+            with TestClient(app):
+                pass
+
+        self.assertEqual(events[0], ("init_args", runtime_args))
+        self.assertIsNone(os.getenv(RUNTIME_SCHEDULER_ARGS_ENV))
+
     def test_lifespan_uses_configured_run_immediately_without_override(self) -> None:
         from api.app import create_app
 
@@ -576,6 +674,7 @@ class RuntimeSchedulerServiceTestCase(unittest.TestCase):
                 owns_schedule=True,
                 force_enabled=False,
                 run_immediately_in_background=False,
+                schedule_args_overrides=None,
             ):
                 events.append(("init", owns_schedule, force_enabled, run_immediately_in_background))
 

@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Regression tests for scheduled mode stock selection behavior."""
 
+import json
 import logging
 import os
 import socket
@@ -488,20 +489,35 @@ class MainScheduleModeTestCase(unittest.TestCase):
     def test_serve_schedule_flag_enables_api_runtime_scheduler(self) -> None:
         from src.services.runtime_scheduler import (
             CLI_SCHEDULER_OWNER_ENV,
+            RUNTIME_SCHEDULER_ARGS_ENV,
             RUNTIME_SCHEDULER_FORCE_ENABLED_ENV,
             RUNTIME_SCHEDULER_RUN_IMMEDIATELY_ENV,
         )
 
-        args = self._make_args(serve=True, schedule=True, host="127.0.0.1", port=8000)
+        args = self._make_args(
+            serve=True,
+            schedule=True,
+            host="127.0.0.1",
+            port=8000,
+            no_notify=True,
+            no_market_review=True,
+            dry_run=True,
+            force_run=True,
+            single_notify=True,
+            no_context_snapshot=True,
+            workers=4,
+        )
         config = self._make_config(webui_enabled=False, schedule_enabled=False)
         marker_seen_by_server = []
         force_enabled_seen_by_server = []
         run_immediately_seen_by_server = []
+        runtime_args_seen_by_server = []
 
         def fake_start_api_server(host, port, config):
             marker_seen_by_server.append(os.getenv(CLI_SCHEDULER_OWNER_ENV))
             force_enabled_seen_by_server.append(os.getenv(RUNTIME_SCHEDULER_FORCE_ENABLED_ENV))
             run_immediately_seen_by_server.append(os.getenv(RUNTIME_SCHEDULER_RUN_IMMEDIATELY_ENV))
+            runtime_args_seen_by_server.append(json.loads(os.getenv(RUNTIME_SCHEDULER_ARGS_ENV, "{}")))
 
         with patch.dict(os.environ, {"GITHUB_ACTIONS": "false"}, clear=False), \
              patch("main.parse_arguments", return_value=args), \
@@ -517,6 +533,15 @@ class MainScheduleModeTestCase(unittest.TestCase):
         self.assertEqual(marker_seen_by_server, [None])
         self.assertEqual(force_enabled_seen_by_server, ["true"])
         self.assertEqual(run_immediately_seen_by_server, ["true"])
+        self.assertEqual(runtime_args_seen_by_server, [{
+            "no_notify": True,
+            "no_market_review": True,
+            "dry_run": True,
+            "force_run": True,
+            "single_notify": True,
+            "no_context_snapshot": True,
+            "workers": 4,
+        }])
         self.assertFalse(config.schedule_enabled)
         run_with_schedule.assert_not_called()
 
