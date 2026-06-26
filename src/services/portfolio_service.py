@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import logging
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
@@ -35,6 +36,7 @@ VALID_SIDES = {"buy", "sell"}
 VALID_CASH_DIRECTIONS = {"in", "out"}
 VALID_CORPORATE_ACTIONS = {"cash_dividend", "split_adjustment"}
 PORTFOLIO_FX_REFRESH_DISABLED_REASON = "portfolio_fx_update_disabled"
+PORTFOLIO_REALTIME_QUOTE_MAX_WORKERS = 4
 
 
 class PortfolioConflictError(Exception):
@@ -967,6 +969,26 @@ class PortfolioService:
         else:
             keys = list(avg_state.keys())
 
+        active_symbols: List[str] = []
+        if as_of_date == date.today():
+            for key in sorted(keys):
+                symbol, _, _ = key
+                if cost_method == "fifo":
+                    qty = sum(
+                        float(lot["remaining_quantity"])
+                        for lot in fifo_lots[key]
+                        if lot["remaining_quantity"] > EPS
+                    )
+                else:
+                    qty = float(avg_state[key].quantity)
+                if qty > EPS:
+                    active_symbols.append(symbol)
+        realtime_prices = (
+            self._prefetch_realtime_position_prices(active_symbols)
+            if active_symbols
+            else None
+        )
+
         for key in sorted(keys):
             symbol, market, currency = key
 
@@ -997,7 +1019,11 @@ class PortfolioService:
                     }
                 )
 
-            price_info = self._resolve_position_price(symbol=symbol, as_of_date=as_of_date)
+            price_info = self._resolve_position_price(
+                symbol=symbol,
+                as_of_date=as_of_date,
+                realtime_prices=realtime_prices,
+            )
             last_price = price_info.price
 
             if price_info.is_available:
@@ -1051,11 +1077,20 @@ class PortfolioService:
 
         return position_rows, lot_rows, market_value_base, total_cost_base, fx_stale
 
-    def _resolve_position_price(self, *, symbol: str, as_of_date: date) -> _ResolvedPositionPrice:
+    def _resolve_position_price(
+        self,
+        *,
+        symbol: str,
+        as_of_date: date,
+        realtime_prices: Optional[Dict[str, Tuple[Optional[float], Optional[str]]]] = None,
+    ) -> _ResolvedPositionPrice:
         today = date.today()
 
         if as_of_date == today:
-            realtime_price, provider = self._fetch_realtime_position_price(symbol)
+            if realtime_prices is None:
+                realtime_price, provider = self._fetch_realtime_position_price(symbol)
+            else:
+                realtime_price, provider = realtime_prices.get(symbol, (None, None))
             if realtime_price is not None and realtime_price > 0:
                 return _ResolvedPositionPrice(
                     price=float(realtime_price),
@@ -1086,12 +1121,56 @@ class PortfolioService:
             is_available=False,
         )
 
-    @staticmethod
-    def _fetch_realtime_position_price(symbol: str) -> Tuple[Optional[float], Optional[str]]:
+    def _prefetch_realtime_position_prices(
+        self,
+        symbols: Iterable[str],
+    ) -> Dict[str, Tuple[Optional[float], Optional[str]]]:
+        unique_symbols = sorted({symbol for symbol in symbols if symbol})
+        if not unique_symbols:
+            return {}
+
+        fetcher_manager = None
         try:
             from data_provider.base import DataFetcherManager
 
-            quote = DataFetcherManager().get_realtime_quote(symbol, log_final_failure=False)
+            fetcher_manager = DataFetcherManager()
+            if len(unique_symbols) >= 5:
+                fetcher_manager.prefetch_realtime_quotes(unique_symbols)
+        except Exception as exc:
+            logger.warning("Failed to initialize realtime portfolio prefetch manager: %s", exc)
+
+        if len(unique_symbols) == 1:
+            symbol = unique_symbols[0]
+            return {symbol: self._fetch_realtime_position_price(symbol, fetcher_manager)}
+
+        results: Dict[str, Tuple[Optional[float], Optional[str]]] = {}
+        max_workers = min(PORTFOLIO_REALTIME_QUOTE_MAX_WORKERS, len(unique_symbols))
+        with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="portfolio-quote") as executor:
+            futures = {
+                executor.submit(self._fetch_realtime_position_price, symbol, fetcher_manager): symbol
+                for symbol in unique_symbols
+            }
+            for future in as_completed(futures):
+                symbol = futures[future]
+                try:
+                    results[symbol] = future.result()
+                except Exception as exc:  # pragma: no cover - defensive guard for patched fetchers
+                    logger.warning("Failed to prefetch realtime portfolio price for %s: %s", symbol, exc)
+                    results[symbol] = (None, None)
+
+        return results
+
+    @staticmethod
+    def _fetch_realtime_position_price(
+        symbol: str,
+        fetcher_manager: Optional[Any] = None,
+    ) -> Tuple[Optional[float], Optional[str]]:
+        try:
+            if fetcher_manager is None:
+                from data_provider.base import DataFetcherManager
+
+                fetcher_manager = DataFetcherManager()
+            quote = fetcher_manager.get_realtime_quote(symbol, log_final_failure=False)
         except Exception as exc:
             logger.warning("Failed to fetch realtime portfolio price for %s: %s", symbol, exc)
             return None, None

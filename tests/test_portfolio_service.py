@@ -224,6 +224,55 @@ class PortfolioServiceTestCase(unittest.TestCase):
         self.assertEqual(pos["price_source"], "history_close")
         self.assertTrue(pos["price_available"])
 
+    def test_current_snapshot_prefetches_realtime_prices_for_multiple_positions(self) -> None:
+        today = date.today()
+        account = self.service.create_account(name="Main", broker="Demo", market="cn", base_currency="CNY")
+        aid = account["id"]
+        for symbol in ["600519", "000001", "300750"]:
+            self.service.record_trade(
+                account_id=aid,
+                symbol=symbol,
+                trade_date=today,
+                side="buy",
+                quantity=10,
+                price=100,
+                market="cn",
+                currency="CNY",
+            )
+
+        active_fetches = 0
+        max_active_fetches = 0
+        lock = threading.Lock()
+        release = threading.Event()
+        called_symbols: list[str] = []
+
+        def fake_realtime_fetch(symbol: str, _fetcher_manager: object = None) -> tuple[float, str]:
+            nonlocal active_fetches, max_active_fetches
+            with lock:
+                called_symbols.append(symbol)
+                active_fetches += 1
+                max_active_fetches = max(max_active_fetches, active_fetches)
+                if active_fetches >= 2:
+                    release.set()
+            release.wait(timeout=1.0)
+            with lock:
+                active_fetches -= 1
+            return 125.0, "unit-test"
+
+        with patch.object(
+            PortfolioService,
+            "_fetch_realtime_position_price",
+            side_effect=fake_realtime_fetch,
+        ):
+            snapshot = self.service.get_portfolio_snapshot(account_id=aid, as_of=today, cost_method="fifo")
+
+        positions = snapshot["accounts"][0]["positions"]
+        self.assertEqual(len(positions), 3)
+        self.assertEqual(set(called_symbols), {position["symbol"] for position in positions})
+        self.assertGreaterEqual(max_active_fetches, 2)
+        self.assertTrue(all(position["price_source"] == "realtime_quote" for position in positions))
+        self.assertTrue(all(position["price_provider"] == "unit-test" for position in positions))
+
     def test_historical_snapshot_marks_missing_price_without_cost_fallback(self) -> None:
         account = self.service.create_account(name="Main", broker="Demo", market="cn", base_currency="CNY")
         aid = account["id"]
