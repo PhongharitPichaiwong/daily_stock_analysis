@@ -238,6 +238,11 @@ describe('AlertRuleForm', () => {
     render(<AlertRuleForm onSubmit={onSubmit} />);
 
     fireEvent.change(screen.getByLabelText('目标范围'), { target: { value: 'market' } });
+    expect(screen.getByRole('option', { name: 'A 股（cn）' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: '港股（hk）' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: '美股（us）' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: '日股（jp）' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: '韩股（kr）' })).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('市场区域'), { target: { value: 'hk' } });
     fireEvent.click(screen.getByRole('button', { name: '创建规则' }));
 

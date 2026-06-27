@@ -31,12 +31,25 @@ except Exception:  # pragma: no cover - optional dependency path
 
 EPS = 1e-8
 VALID_MARKETS = {"cn", "hk", "us", "jp", "kr", "tw"}
+PARTIAL_VALUATION_MARKETS = {"jp", "kr", "tw"}
 VALID_COST_METHODS = {"fifo", "avg"}
 VALID_SIDES = {"buy", "sell"}
 VALID_CASH_DIRECTIONS = {"in", "out"}
 VALID_CORPORATE_ACTIONS = {"cash_dividend", "split_adjustment"}
 PORTFOLIO_FX_REFRESH_DISABLED_REASON = "portfolio_fx_update_disabled"
 PORTFOLIO_REALTIME_QUOTE_MAX_WORKERS = 4
+
+
+def _portfolio_limitations_for_market(market: str) -> List[str]:
+    """Return explicit snapshot limitations for markets with partial valuation semantics."""
+
+    if market not in PARTIAL_VALUATION_MARKETS:
+        return []
+    return [
+        "realtime_quote_best_effort",
+        "fx_and_cost_basis_partial",
+        "sector_and_risk_metrics_limited",
+    ]
 
 
 class PortfolioConflictError(Exception):
@@ -912,6 +925,7 @@ class PortfolioService:
 
         unrealized_pnl_base = market_value_base - total_cost_base
         total_equity_base = total_cash_base + market_value_base
+        limitations = _portfolio_limitations_for_market(account.market)
 
         account_payload = {
             "account_id": account.id,
@@ -930,6 +944,8 @@ class PortfolioService:
             "fee_total": round(fees_total_base, 6),
             "tax_total": round(taxes_total_base, 6),
             "fx_stale": fx_stale,
+            "data_quality": "partial" if limitations else "ok",
+            "limitations": limitations,
             "positions": position_rows,
         }
 
@@ -1025,6 +1041,7 @@ class PortfolioService:
                 realtime_prices=realtime_prices,
             )
             last_price = price_info.price
+            limitations = _portfolio_limitations_for_market(market)
 
             if price_info.is_available:
                 local_market_value = qty * float(last_price)
@@ -1069,6 +1086,8 @@ class PortfolioService:
                     "price_date": price_info.price_date.isoformat() if price_info.price_date else None,
                     "price_stale": price_info.is_stale,
                     "price_available": price_info.is_available,
+                    "data_quality": "partial" if limitations else "ok",
+                    "limitations": limitations,
                 }
             )
 

@@ -31,7 +31,7 @@
 - 不承诺实时行情；Yahoo Finance 数据可能延迟或字段缺失。
 - 不承诺完整基本面、行业/板块、市场宽度或涨跌家数。JP/KR 大盘复盘 v1 仅提供主要指数、新闻线索与模板/LLM 复盘，不提供日韩市场宽度或板块排行。
 - 不承诺完整日韩全市场股票列表；Web 自动补全当前仅覆盖仓内种子索引中的常用标的（已扩充至各 30 只左右的头部标的），未命中时仍可手动输入 suffix 代码。
-- 不补齐 Portfolio 的 JPY/KRW 汇率、成本、市值完整口径；相关字段仅放开市场类型以避免前后端校验拒绝。
+- Portfolio 允许 JP/KR 账户、交易和持仓快照进入现有链路，但会将账户/持仓快照标记为 `data_quality=partial`，并通过 `limitations` 明确 `realtime_quote_best_effort`、`fx_and_cost_basis_partial`、`sector_and_risk_metrics_limited`；不承诺 JPY/KRW 汇率、成本、市值、行业集中度或组合风险指标完整口径。
 
 回滚方式：移除 `jp/kr` 市场识别、交易日历注册、YFinance 路由扩展、Web/API 类型放行、`scripts/stock_index_seeds/` 日韩种子索引，并删除本文档中的能力声明。
 
@@ -53,6 +53,22 @@
 - 如果 `exchange-calendars` 缺少对应交易所日历，继续沿用既有交易日 fail-open/fail-closed 语义。
 
 回滚方式：从 `MARKET_REVIEW_REGION` 合法值、Web 设置枚举、MarketProfile/MarketStrategy、`_MARKET_REVIEW_MARKETS` 和本文档中移除 `jp` / `kr`。
+
+## 日本/韩国 Portfolio / Market Light 边界（Issue #1815 Phase 3）
+
+Portfolio：
+
+- JP/KR 账户、交易、现金流水和公司行动 API 保持可创建/查询，以便用户记录持仓。
+- 持仓快照对 JP/KR 账户和持仓明确返回 `data_quality=partial` 与 `limitations`，表示实时价、汇率/成本基准、行业与组合风险指标均为 best-effort 或受限口径。
+- 当前不新增 JPY/KRW 汇率源、税费模型、交易单位/最小变动价位校验或行业映射。
+
+Market Light / 告警：
+
+- Market Light 快照和 Market Light 告警仍只支持 `cn` / `hk` / `us`。
+- Web 告警市场下拉不展示 `jp` / `kr`；后端 `normalize_market_region()` 对 `jp` / `kr` 返回显式 unsupported 错误。
+- JP/KR 大盘复盘 v1 可生成报告和结构化 market review payload，但不等价于完整 Market Light 风控信号。
+
+回滚方式：移除 Portfolio snapshot 的 `data_quality` / `limitations` 扩展，并恢复告警前端/后端对市场枚举的旧边界说明。
 
 ## 台湾个股 suffix-only MVP（Issue #1772，Refs #1772）
 

@@ -46,6 +46,8 @@ export interface PortfolioPositionItem {
   priceDate?: string | null;
   priceStale?: boolean;
   priceAvailable?: boolean;
+  dataQuality?: 'ok' | 'partial' | string;
+  limitations?: string[];
 }
 
 export interface PortfolioPositionAnalysisRequest {
@@ -71,6 +73,8 @@ export interface PortfolioAccountSnapshot {
   feeTotal: number;
   taxTotal: number;
   fxStale: boolean;
+  dataQuality?: 'ok' | 'partial' | string;
+  limitations?: string[];
   positions: PortfolioPositionItem[];
 }
 
