@@ -109,7 +109,25 @@ Market Light / 告警：
 
 - 影响的关键键值：`MARKET_REVIEW_REGION`、`MARKET_REVIEW_COLOR_SCHEME`（仅扩展大盘复盘输入与展示），不新增 provider/model/base_url 的新写入语义。
 - 兼容保护：配置更新仍是**原子 upsert**（`ConfigManager.apply_updates`），保存/导入只写入提交的键，未提交的 `LITELLM_MODEL`、`LITELLM_FALLBACK_MODELS`、`AGENT_LITELLM_MODEL`、`VISION_MODEL`、`OPENAI_BASE_URL` 等旧值保留不清空；运行时 provider 选择仍遵循既有优先级链路。
+- `MARKET_REVIEW_REGION` 保存与回退矩阵：
+  - `both`：Web/API 校验通过并按原值保存；运行时解析为 `cn,hk,us,jp,kr`，交易日过滤阶段再缩小到当日开市市场。
+  - `cn,us,jp` 等逗号子集：Web 设置页以文本框保存；API 校验要求每个 token 属于 `cn/hk/us/jp/kr/both`，保存后运行时按规范顺序归一为合法子集。
+  - 空值：该键不是必填，Web/API 可保存空值；运行时解析会回退为 `cn`。
+  - 含非法 token 的 Web/API 保存请求：校验返回错误，不写入 `.env`，也不触发其它配置清理或迁移。
+  - 直接手改 `.env` 后出现非法值：运行时解析记录 warning 并回退为 `cn`；若逗号列表中仍有合法 token，则仅保留合法子集。
+- 覆盖的回归测试：`tests/test_system_config_service.py` 覆盖 Web/API 校验、保存与模型运行时键不被清理；`apps/dsa-web/src/components/settings/__tests__/SettingsField.test.tsx` 与 `apps/dsa-web/tests/system_config_i18n.test.ts` 覆盖设置页自由文本形态与文案；`tests/test_config_env_compat.py` 与 `tests/test_trading_calendar.py` 覆盖直接环境变量解析、非法值回退与交易日过滤。
 - 回退策略：先恢复提交前 `.env` / 配置备份，再恢复 `MARKET_REVIEW_REGION` 为旧值并重启服务，或直接 revert 本 PR，按 `docs/full-guide.md` 的“文档与回退说明”执行。
+
+第三方数据源兼容说明：
+
+- JP/KR 主指数仅依赖 Yahoo Finance / yfinance 约定：日经225 `^N225`、TOPIX `^TOPX`、KOSPI `^KS11`、KOSDAQ `^KQ11`；依赖版本下限仍是 `requirements.txt` 中的 `yfinance>=0.2.0`。
+- 本地 CI 默认只做离线契约回归，不承诺 Yahoo Finance 实时连通性；`tests/test_yfinance_jp_kr_indices.py` 覆盖 symbol 映射、返回代码/名称与全空时返回 `None` 的降级路径。
+- 单个 JP/KR 指数拉取失败仍按 yfinance/market review 既有 fail-open 语义跳过，不中断其它指数、其它市场或主分析流程；全部 JP/KR 指数不可用时，报告仅保留可得市场或降级为空结果。
+
+Web UI 可视证据口径：
+
+- Market Light 告警目标范围切到“大盘市场”时，市场区域下拉只显示 A 股、港股、美股，不显示日股/韩股。
+- 当前仓库未保存一次性截图证据；可替代证据为 `apps/dsa-web/src/components/alerts/__tests__/AlertRuleForm.test.tsx` 中英文断言，覆盖中文 `A 股（cn）/港股（hk）/美股（us）` 与英文 `A-shares (cn)/Hong Kong (hk)/US (us)` 可见，并断言 `jp/kr` 选项不可见。PR 描述如无法附截图，应引用该测试命令与结果作为替代证据。
 
 回滚方式：移除 Portfolio snapshot 的 `data_quality` / `limitations` 扩展，并恢复告警前端/后端对市场枚举的旧边界说明。
 
