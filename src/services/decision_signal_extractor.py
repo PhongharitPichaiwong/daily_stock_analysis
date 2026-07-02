@@ -59,7 +59,11 @@ def build_decision_signal_payload_from_report(
         raise ValueError(f"invalid profile_source: {profile_source}")
 
     dashboard = _as_mapping(getattr(result, "dashboard", None))
-    score = _score_from_result(getattr(result, "sentiment_score", None))
+    score_calibration = _as_mapping(dashboard.get("decision_score_calibration"))
+    score = _effective_signal_score(
+        _score_from_result(getattr(result, "sentiment_score", None)),
+        score_calibration,
+    )
     raw_action = _raw_action_from_report(result)
     guardrail_reason = _extract_guardrail_reason(result, dashboard, score=score, raw_action=raw_action)
     action_fields = build_action_fields(
@@ -113,10 +117,16 @@ def build_decision_signal_payload_from_report(
     score_metadata = score_band_metadata(score)
     if score_metadata:
         metadata["score_scale"] = score_metadata
-        metadata["raw_score"] = score_metadata["score"]
-        metadata["adjusted_score"] = _score_from_result(
-            _as_mapping(dashboard.get("decision_score_calibration")).get("adjusted_score")
-        ) or score_metadata["score"]
+        metadata["raw_score"] = _calibrated_or_raw_score(
+            score_calibration,
+            prefer="raw",
+            fallback=score_metadata["score"],
+        )
+        metadata["adjusted_score"] = _calibrated_or_raw_score(
+            score_calibration,
+            prefer="adjusted",
+            fallback=score_metadata["score"],
+        )
         metadata["final_action"] = action
         if raw_action:
             metadata["raw_action"] = raw_action
@@ -204,6 +214,30 @@ def extract_and_persist_from_analysis_result(
 
 def _as_mapping(value: Any) -> Dict[str, Any]:
     return dict(value) if isinstance(value, Mapping) else {}
+
+
+def _calibrated_or_raw_score(
+    calibration: Dict[str, Any],
+    *,
+    prefer: Literal["raw", "adjusted"],
+    fallback: Optional[int] = None,
+) -> Optional[int]:
+    if prefer == "raw":
+        value = calibration.get("raw_score")
+    else:
+        value = calibration.get("adjusted_score")
+    parsed = _score_from_result(value)
+    if parsed is not None:
+        return parsed
+    return fallback
+
+
+def _effective_signal_score(
+    score: Optional[int],
+    calibration: Dict[str, Any],
+) -> Optional[int]:
+    adjusted = _calibrated_or_raw_score(calibration, prefer="adjusted")
+    return adjusted if adjusted is not None else score
 
 
 def _first_text(*values: Any) -> Optional[str]:

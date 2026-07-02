@@ -259,6 +259,40 @@ def test_build_payload_keeps_high_neutral_action_with_guardrail_reason() -> None
     assert payload["metadata"]["guardrail_reason"] == "持有/观望待回踩"
 
 
+def test_build_payload_uses_stability_calibration_raw_and_adjusted_scores() -> None:
+    result = _result(
+        sentiment_score=59,
+        operation_advice="观望",
+        decision_type="hold",
+        action=None,
+    )
+    dashboard = result.dashboard or {}
+    dashboard["decision_score_calibration"] = {
+        "raw_score": 72,
+        "adjusted_score": 59,
+        "final_action": "watch",
+        "guardrail_reason": "资金流较弱，按风险规则降级",
+    }
+    result.dashboard = dashboard
+
+    payload = build_decision_signal_payload_from_report(
+        result,
+        trace_id="trace-stability-calibration",
+        query_source="api",
+        report_type="simple",
+        profile_source=BUILD_PROFILE_SOURCE,
+    )
+
+    assert payload is not None
+    assert payload["score"] == 59
+    assert payload["metadata"]["raw_score"] == 72
+    assert payload["metadata"]["adjusted_score"] == 59
+    assert payload["metadata"]["score_scale"]["score_band"] == "40-59"
+    assert payload["metadata"]["raw_action"] == "watch"
+    assert payload["metadata"]["final_action"] == "watch"
+    assert payload["metadata"]["guardrail_reason"] == "资金流较弱，按风险规则降级"
+
+
 def test_build_payload_aligns_low_neutral_action_to_reduce() -> None:
     result = _result(
         sentiment_score=28,
@@ -445,6 +479,45 @@ def test_extract_and_persist_reuses_service_dedup_and_sanitization(isolated_db) 
     assert persisted["reason"] == "趋势确认 token=[REDACTED]"
     assert persisted["entry_low"] == 1690.0
     assert persisted["entry_high"] == 1700.0
+
+
+def test_extract_and_persist_reuses_stability_score_metadata(isolated_db) -> None:
+    service = DecisionSignalService(db_manager=isolated_db)
+    result = _result(
+        sentiment_score=59,
+        operation_advice="观望",
+        decision_type="hold",
+        action=None,
+        confidence_level="中",
+    )
+    dashboard = result.dashboard or {}
+    dashboard["decision_score_calibration"] = {
+        "raw_score": 72,
+        "adjusted_score": 59,
+        "final_action": "watch",
+        "guardrail_reason": "资金流较弱，按风险规则降级",
+    }
+    result.dashboard = dashboard
+
+    created = extract_and_persist_from_analysis_result(
+        result,
+        context_snapshot={"market_phase_summary": {"phase": "intraday"}},
+        portfolio_context={"quantity": 10},
+        source_report_id=903,
+        trace_id="trace-stability-persist",
+        query_source="api",
+        report_type="full",
+        profile_source="auto_default",
+        service=service,
+    )
+
+    assert created is not None
+    persisted = service.list_signals(source_report_id=903)["items"][0]
+    assert persisted["metadata"]["raw_score"] == 72
+    assert persisted["metadata"]["adjusted_score"] == 59
+    assert persisted["metadata"]["raw_action"] == "watch"
+    assert persisted["metadata"]["final_action"] == "watch"
+    assert persisted["metadata"]["guardrail_reason"] == "资金流较弱，按风险规则降级"
 
 
 def test_extract_and_persist_writes_tw_signal(isolated_db) -> None:

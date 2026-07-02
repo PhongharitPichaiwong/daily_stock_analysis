@@ -16,6 +16,7 @@ from src.stock_analyzer import (
     MACDStatus,
     RSIStatus,
 )
+from src.schemas.decision_scale import action_for_score, decision_type_for_score, signal_key_for_score
 
 
 def _make_result(
@@ -184,39 +185,133 @@ class StockAnalyzerBiasTestCase(unittest.TestCase):
         mock_get_config.return_value.bias_threshold = 5.0
         cases = [
             (
-                _make_result(trend_status=TrendStatus.BULL, bias_ma5=0.0),
+                _make_result(
+                    trend_status=TrendStatus.STRONG_BULL,
+                    bias_ma5=-1.0,
+                    volume_status=VolumeStatus.HEAVY_VOLUME_UP,
+                    macd_status=MACDStatus.BULLISH,
+                    rsi_status=RSIStatus.OVERBOUGHT,
+                    support_ma5=True,
+                    support_ma10=True,
+                    trend_strength=75,
+                ),
+                BuySignal.STRONG_BUY,
+                80,
+                signal_key_for_score(80),
+                action_for_score(80),
+                decision_type_for_score(80),
+            ),
+            (
+                _make_result(
+                    trend_status=TrendStatus.STRONG_BULL,
+                    bias_ma5=6.0,
+                    volume_status=VolumeStatus.HEAVY_VOLUME_DOWN,
+                    macd_status=MACDStatus.BULLISH,
+                    rsi_status=RSIStatus.STRONG_BUY,
+                    support_ma5=True,
+                    support_ma10=True,
+                ),
                 BuySignal.BUY,
                 60,
+                signal_key_for_score(60),
+                action_for_score(60),
+                decision_type_for_score(60),
+            ),
+            (
+                _make_result(
+                    trend_status=TrendStatus.BULL,
+                    bias_ma5=6.0,
+                    volume_status=VolumeStatus.HEAVY_VOLUME_DOWN,
+                    macd_status=MACDStatus.CROSSING_UP,
+                    rsi_status=RSIStatus.OVERBOUGHT,
+                ),
+                BuySignal.WAIT,
+                40,
+                signal_key_for_score(40),
+                action_for_score(40),
+                decision_type_for_score(40),
+            ),
+            (
+                _make_result(
+                    trend_status=TrendStatus.STRONG_BULL,
+                    bias_ma5=-1.5,
+                    volume_status=VolumeStatus.SHRINK_VOLUME_DOWN,
+                    macd_status=MACDStatus.GOLDEN_CROSS,
+                    rsi_status=RSIStatus.OVERSOLD,
+                    support_ma5=True,
+                    support_ma10=True,
+                    trend_strength=75,
+                ),
+                BuySignal.STRONG_BUY,
+                97,
+                signal_key_for_score(97),
+                action_for_score(97),
+                decision_type_for_score(97),
+            ),
+            (
+                _make_result(
+                    trend_status=TrendStatus.BULL,
+                    bias_ma5=1.5,
+                    volume_status=VolumeStatus.NORMAL,
+                    macd_status=MACDStatus.BULLISH,
+                    rsi_status=RSIStatus.NEUTRAL,
+                    support_ma5=True,
+                ),
+                BuySignal.BUY,
+                72,
+                signal_key_for_score(72),
+                action_for_score(72),
+                decision_type_for_score(72),
             ),
             (
                 _make_result(
                     trend_status=TrendStatus.CONSOLIDATION,
-                    bias_ma5=6.0,
-                    rsi_status=RSIStatus.STRONG_BUY,
+                    bias_ma5=1.5,
+                    volume_status=VolumeStatus.NORMAL,
+                    macd_status=MACDStatus.BULLISH,
+                    rsi_status=RSIStatus.NEUTRAL,
                 ),
                 BuySignal.WAIT,
-                40,
-            ),
-            (
-                _make_result(trend_status=TrendStatus.CONSOLIDATION, bias_ma5=6.0),
-                BuySignal.SELL,
-                20,
+                53,
+                signal_key_for_score(53),
+                action_for_score(53),
+                decision_type_for_score(53),
             ),
             (
                 _make_result(
-                    trend_status=TrendStatus.STRONG_BEAR,
+                    trend_status=TrendStatus.WEAK_BEAR,
+                    bias_ma5=5.5,
+                    volume_status=VolumeStatus.NORMAL,
+                    macd_status=MACDStatus.BULLISH,
+                    rsi_status=RSIStatus.WEAK,
+                ),
+                BuySignal.SELL,
+                33,
+                signal_key_for_score(33),
+                action_for_score(33),
+                decision_type_for_score(33),
+            ),
+            (
+                _make_result(
+                    trend_status=TrendStatus.BEAR,
                     bias_ma5=6.0,
                     volume_status=VolumeStatus.HEAVY_VOLUME_DOWN,
                     macd_status=MACDStatus.DEATH_CROSS,
-                    rsi_status=RSIStatus.WEAK,
+                    rsi_status=RSIStatus.OVERBOUGHT,
                 ),
                 BuySignal.STRONG_SELL,
-                0,
+                8,
+                signal_key_for_score(8),
+                action_for_score(8),
+                decision_type_for_score(8),
             ),
         ]
 
-        for result, expected_signal, min_score in cases:
+        for result, expected_signal, expected_score, expected_scale_key, expected_scale_action, expected_scale_decision_type in cases:
             with self.subTest(expected_signal=expected_signal):
                 self.analyzer._generate_signal(result)
-                self.assertGreaterEqual(result.signal_score, min_score)
+                self.assertEqual(result.signal_score, expected_score)
+                self.assertEqual(signal_key_for_score(result.signal_score), expected_scale_key)
+                self.assertEqual(action_for_score(result.signal_score), expected_scale_action)
+                self.assertEqual(decision_type_for_score(result.signal_score), expected_scale_decision_type)
                 self.assertEqual(result.buy_signal, expected_signal)

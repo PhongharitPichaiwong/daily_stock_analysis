@@ -129,7 +129,11 @@ def _build_candidate(
     if not raw_code or not market:
         raise DecisionSignalUnsupportedReportSnapshotError("source report has no supported stock identity")
 
-    score = _score_from_value(_first_present(raw_result.get("sentiment_score"), getattr(record, "sentiment_score", None)))
+    dashboard = _as_mapping(raw_result.get("dashboard"))
+    score = _effective_signal_score(
+        _score_from_value(_first_present(raw_result.get("sentiment_score"), getattr(record, "sentiment_score", None))),
+        dashboard=dashboard,
+    )
     raw_action = normalize_decision_action(raw_result.get("action")) or normalize_decision_action(
         _first_present(raw_result.get("operation_advice"), getattr(record, "operation_advice", None))
     )
@@ -176,6 +180,10 @@ def _build_candidate(
         watch_conditions=_extract_watch_conditions(raw_result),
         market_phase=market_phase,
     )
+
+
+def _as_mapping(value: Any) -> dict[str, Any]:
+    return dict(value) if isinstance(value, Mapping) else {}
 
 
 def _parse_mapping(value: Any) -> Mapping[str, Any]:
@@ -241,6 +249,16 @@ def _score_from_value(value: Any) -> Optional[int]:
     except (TypeError, ValueError):
         return None
     return score if 0 <= score <= 100 else None
+
+
+def _effective_signal_score(
+    score: Optional[int],
+    *,
+    dashboard: Mapping[str, Any],
+) -> Optional[int]:
+    calibration = _as_mapping(dashboard.get("decision_score_calibration"))
+    adjusted = _score_from_value(calibration.get("adjusted_score"))
+    return adjusted if adjusted is not None else score
 
 
 def _extract_guardrail_reason(
