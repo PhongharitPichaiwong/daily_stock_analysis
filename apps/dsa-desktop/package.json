@@ -2,6 +2,7 @@
   "name": "daily-stock-analysis-desktop",
   "version": "3.21.0",
   "private": true,
+  "packageManager": "npm@11.16.0",
   "main": "main.js",
   "scripts": {
     "dev": "electron .",
@@ -56,5 +57,8 @@
     "mac": {
       "target": "dmg"
     }
+  },
+  "allowScripts": {
+    "electron@31.7.7": true
   }
 }
